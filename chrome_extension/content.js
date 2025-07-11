@@ -88,6 +88,7 @@ function extractJobData() {
     company: companyEl?.textContent.trim() || '',
     location: locationEl?.textContent.trim() || '',
     title: titleEl?.textContent.trim() || '',
+    candidates: giaCandidatiEl?.textContent.trim() || '',
     body: bodyEl?.textContent.trim() || '',
     postedDate: dateEl?.textContent.trim() || ''
   };
@@ -145,16 +146,43 @@ function applyResponseToJobCard(result) {
   const { esito, message } = result;
   console.log("Risposta:", result)
 
-  // if (esito === 'NEW') {
-  //   jobElement.style.border = '2px solid orange';
-  // } else if (esito === 'SKIP') {
-  //   jobElement.style.opacity = '0.5';
-  // } else if (esito === 'REJECT') {
-  //   jobElement.style.backgroundColor = 'lightgray';
-  // }
+  const containerRightCard = document.querySelector('.job-details-jobs-unified-top-card__container--two-pane.relative');
+  if (!containerRightCard) {
+    console.error("Contenitore principale non trovato.");
+    return;
+  }
+
+  const titleEl = document.querySelector("#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.display-flex.justify-space-between.flex-wrap.mt2 > div > h1");
+  const infoJob1El = document.querySelector("#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.job-details-jobs-unified-top-card__primary-description-container");
+  const infoJob2El = document.querySelector("#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.mt2.mb2");
+  const bodyEl = document.querySelector("#job-details > div")
+
+  switch (esito) {
+    case 'NEW':
+      containerRightCard.style.backgroundColor = ''; // Ripristina colore originale
+      infoJob1El.style.opacity = '1.0';
+      infoJob2El.style.opacity = '1.0';
+      bodyEl.style.opacity = '1.0';
+      break;
+    case 'TOO_MANY_CANDIDATES':
+      containerRightCard.style.backgroundColor = 'red';
+      infoJob1El.style.opacity = '0.1';
+      infoJob2El.style.opacity = '0.1';
+      bodyEl.style.opacity = '0.1';
+      break;
+    case 'ALREADY_SEEN':
+      containerRightCard.style.backgroundColor = 'orange';
+      infoJob1El.style.opacity = '0.5';
+      infoJob2El.style.opacity = '0.5';
+      bodyEl.style.opacity = '0.5';
+      break;
+    default:
+      containerRightCard.style.backgroundColor = ''; // Ripristina colore originale
+      break;
+  }
 
   // // Tooltip per mostrare il messaggio
-  // jobElement.title = message;
+  titleEl.setAttribute("title", message);
 }
 
 // Avvio principale: carico keyword e poi eseguo funzioni e osservatore

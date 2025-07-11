@@ -10,8 +10,6 @@ servers:
 tags:
   - name: job
     description: Everything about your Jobs postings
-  - name: vocabulary
-    description: Everything about your Vocabulary
 
 paths:
 
@@ -34,25 +32,6 @@ paths:
         '500':
           $ref: '#/components/responses/internalServerError'
 
-  /vocabulary:
-    parameters:
-      - $ref: '#/components/parameters/correlationIdRequestHeader'
-    post:
-      tags:
-        - vocabulary
-      summary: Add new words for specific language
-      description: Add new words
-      operationId: addNewWords
-      requestBody:
-        $ref: '#/components/requestBodies/newWords'
-      responses:
-        '200':
-          $ref: '#/components/responses/ok'
-        '400':
-          $ref: '#/components/responses/badRequest'
-        '500':
-          $ref: '#/components/responses/internalServerError'
-
 components:
 
   requestBodies:
@@ -62,12 +41,6 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/jobPostingDto'
-    newWords:
-      required: true
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/newWordsDto'
 
   responses:
     newJobPostingResponseBody:
@@ -103,6 +76,7 @@ components:
         - originWebsite
         - company
         - title
+        - candidates
         - body
         - postedDate
       properties:
@@ -123,6 +97,10 @@ components:
           minLength: 1
           maxLength: 200
           example: "Software Engineer"
+        candidates:
+          type: string
+          minLength: 1
+          example: "7 applicants"
         body:
           type: string
           minLength: 1
@@ -131,25 +109,11 @@ components:
           type: string
           example: "1 settimana fa"
 
-    newWordsDto:
-      type: object
-      required:
-        - language
-        - text
-      properties:
-        language:
-          type: string
-          minLength: 1
-          example: "ITALIAN"
-        text:
-          type: string
-          minLength: 1
-          example: "word1 word2 ..."
-
     jobPostingDtoResponse:
       type: object
       required:
         - esito
+        - message
       properties:
         esito:
           $ref: '#/components/schemas/esito'
@@ -179,7 +143,8 @@ components:
       type: string
       enum:
         - NEW # The job posting has just been acquired and hasn't been analyzed or processed yet
-        - ALREADY_VIEWED # The job posting has already been processed or viewed previously
+        - TOO_MANY_CANDIDATES
+        - ALREADY_SEEN # The job posting has already been processed or viewed previously
         - SKILLS_MISMATCH # The job posting requires skills that don't align with the user's profile
         - EXPERIENCE_MISMATCH # The job posting requires an experience level incompatible with the user's (e.g., too much or too little)
         - UNSUITABLE_LANGUAGE # The language of the job posting is not among those spoken or understood by the user

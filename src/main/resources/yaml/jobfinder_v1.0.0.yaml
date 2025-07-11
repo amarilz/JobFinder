@@ -1,0 +1,205 @@
+openapi: 3.0.4
+info:
+  title: JobFinder
+  description: JobFinder
+  version: 1.0.0
+
+servers:
+  - url: https://localhost:8080
+
+tags:
+  - name: job
+    description: Everything about your Jobs postings
+  - name: vocabulary
+    description: Everything about your Vocabulary
+
+paths:
+
+  /job:
+    parameters:
+      - $ref: '#/components/parameters/correlationIdRequestHeader'
+    post:
+      tags:
+        - job
+      summary: New job posting to the database
+      description: New job posting
+      operationId: newJobPosting
+      requestBody:
+        $ref: '#/components/requestBodies/newJobPostingRequestBody'
+      responses:
+        '200':
+          $ref: '#/components/responses/newJobPostingResponseBody'
+        '400':
+          $ref: '#/components/responses/badRequest'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+
+  /vocabulary:
+    parameters:
+      - $ref: '#/components/parameters/correlationIdRequestHeader'
+    post:
+      tags:
+        - vocabulary
+      summary: Add new words for specific language
+      description: Add new words
+      operationId: addNewWords
+      requestBody:
+        $ref: '#/components/requestBodies/newWords'
+      responses:
+        '200':
+          $ref: '#/components/responses/ok'
+        '400':
+          $ref: '#/components/responses/badRequest'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+
+components:
+
+  requestBodies:
+    newJobPostingRequestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/jobPostingDto'
+    newWords:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/newWordsDto'
+
+  responses:
+    newJobPostingResponseBody:
+      description: Success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/jobPostingDtoResponse'
+    # 200
+    ok:
+      description: Ok
+      content: { }
+    # 400
+    badRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/errorResponseMessage'
+    # 500
+    internalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/errorResponseMessage'
+
+
+  schemas:
+    jobPostingDto:
+      type: object
+      required:
+        - originWebsite
+        - company
+        - title
+        - body
+        - postedDate
+      properties:
+        originWebsite:
+          type: string
+          minLength: 1
+          example: "linkedin.com"
+        company:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "Tech Corp"
+        location:
+          type: string
+          example: "Milano, Italia"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: "Software Engineer"
+        body:
+          type: string
+          minLength: 1
+          maxLength: 10000
+        postedDate:
+          type: string
+          example: "1 settimana fa"
+
+    newWordsDto:
+      type: object
+      required:
+        - language
+        - text
+      properties:
+        language:
+          type: string
+          minLength: 1
+          example: "ITALIAN"
+        text:
+          type: string
+          minLength: 1
+          example: "word1 word2 ..."
+
+    jobPostingDtoResponse:
+      type: object
+      required:
+        - esito
+      properties:
+        esito:
+          $ref: '#/components/schemas/esito'
+        message:
+          type: string
+          example: "Non sei interessato al C++"
+
+    errorResponseMessage:
+      type: object
+      required:
+        - status
+        - error
+        - timestamp
+      properties:
+        status:
+          type: integer
+          example: 400
+        error:
+          type: string
+          minLength: 1
+          example: "31"
+        timestamp:
+          type: string
+          format: date-time
+
+    esito:
+      type: string
+      enum:
+        - NEW # The job posting has just been acquired and hasn't been analyzed or processed yet
+        - ALREADY_VIEWED # The job posting has already been processed or viewed previously
+        - SKILLS_MISMATCH # The job posting requires skills that don't align with the user's profile
+        - EXPERIENCE_MISMATCH # The job posting requires an experience level incompatible with the user's (e.g., too much or too little)
+        - UNSUITABLE_LANGUAGE # The language of the job posting is not among those spoken or understood by the user
+        - UNSUITABLE_LOCATION # The job's location indicated in the posting is not in an area of interest to the user
+        - UNSUITABLE_CONTRACT_TYPE # The type of contract offered (e.g., part-time, fixed-term, internship) is not what the user desires
+
+    correlationId:
+      type: string
+      minLength: 1
+      maxLength: 36
+      example: 5ef755b5-fc9e-467a-9022-23b9e2f9616
+
+  parameters:
+    correlationIdRequestHeader:
+      name: correlationId
+      in: header
+      required: true
+      description: |
+        Header di identificazione delle informazioni del chiamante: Codice
+        alfanumerico di correlazione. Di solito uuid
+      schema:
+        $ref: '#/components/schemas/correlationId'
+      example: 5ef755b5-fc9e-467a-9022-23b9e2f9616

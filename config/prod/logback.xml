@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<configuration>
+
+    <property scope="context" name="applicazione" value="JOBFINDER"/>
+    <property scope="context" name="componente" value="BE-JOBFINDER"/>
+
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS}|%p|thread=%t|loggerName=%c|applicazione=${applicazione:--}|componente=${componente:--}|correlationId=%X{correlationId:--}|operation=%X{operation:--}|logMessage=%m%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="TRACE_FILE_APPENDER" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <File>/var/log/app/be-jobfinder-trace.log</File>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <FileNamePattern>
+                /var/log/app/be-jobfinder-trace.log.%d{yyyy-MM-dd}
+            </FileNamePattern>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS}|%p|thread=%t|loggerName=%c|applicazione=${applicazione:--}|componente=${componente:--}|correlationId=%X{correlationId:--}|operation=%X{operation:--}|logMessage=%m%n</pattern>
+        </encoder>
+    </appender>
+
+    <logger name="org.apache" level="WARN"/>
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.hibernate" level="WARN"/>
+    <logger name="com.zaxxer" level="WARN"/>
+
+    <logger name="trace" level="INFO">
+        <appender-ref ref="TRACE_FILE_APPENDER"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+
+</configuration>

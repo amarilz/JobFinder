@@ -1,13 +1,13 @@
 const CONFIG = {
     logPrefix: '[FE-JOBFINDER]',
-    debounceDelay: 500,
+    debounceDelay: 250,
     blacklistFile: 'blacklist_words.json',
     apiEndpoint: '/be-jobfinder/api/v1/job'
 };
 
 const SELECTORS = {
     company: "#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.display-flex.align-items-center > div.display-flex.align-items-center.flex-1 > div",
-    title: "#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.display-flex.justify-space-between.flex-wrap.mt2 > div > h1",
+    title: "#ember53",
     location: "#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.job-details-jobs-unified-top-card__primary-description-container > div > span > span:nth-child(1)",
     postedDate: "#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.job-details-jobs-unified-top-card__primary-description-container > div > span > span:nth-child(3)",
     candidates: "#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.job-details-jobs-unified-top-card__primary-description-container > div > span > span:nth-child(5)",
@@ -19,19 +19,19 @@ const SELECTORS = {
 
 const styleConfig = {
     NEW: {
-        bgColor: '',
+        bgColor: '#99EB99',
         opacity: '1.0'
     },
     TOO_MANY_CANDIDATES: {
-        bgColor: 'red',
+        bgColor: '#DE5959',
         opacity: '0.1'
     },
     UNSUITABLE_LANGUAGE: {
-        bgColor: 'red',
-        opacity: '0.1'
+        bgColor: '#DE5959',
+        opacity: '0.5' // to check
     },
     ALREADY_SEEN: {
-        bgColor: 'orange',
+        bgColor: '#FFD966',
         opacity: '0.5'
     }
 };
@@ -188,18 +188,36 @@ class JobFinder {
         const infoJob2El = document.querySelector(SELECTORS.infoJob2);
         const bodyEl = document.querySelector(SELECTORS.body)
 
+        containerRightCard.style.transition = "background-color 0.5s ease-in-out"; // imposta transizione per il background-color
         containerRightCard.style.backgroundColor = finalConfig.bgColor;
         if (infoJob1El) infoJob1El.style.opacity = finalConfig.opacity;
         if (infoJob2El) infoJob2El.style.opacity = finalConfig.opacity;
         if (bodyEl) bodyEl.style.opacity = finalConfig.opacity;
+        if (titleEl) this.createOrUpdateResultField(titleEl, `[${esito}: ${message}]`)
+    }
 
-        // tooltip per mostrare il messaggio
-        if (titleEl && message) titleEl.setAttribute("title", message);
+    createOrUpdateResultField(titleEl, text) {
+        // id univoco del campo nuovo
+        const newFieldId = 'job-extra-field';
+        // cerca il campo tramite il suo ID unico
+        let extraField = document.getElementById(newFieldId);
+        // controllo se il campo esiste, aggiorna solo il testo
+        if (extraField) {
+            extraField.textContent = text;
+        } else {
+            // non esiste quindi lo creo
+            const titleParentElement = titleEl.parentElement;
+
+            extraField = document.createElement('span');
+            extraField.id = newFieldId;
+            extraField.textContent = text;
+            extraField.style.marginLeft = '5px'; // aggiunge un piccolo margine
+            titleParentElement.appendChild(extraField);
+        }
     }
 
     // Inizializza l'observer
-    // Esempio di timeline reale:
-    /*
+    /* Esempio di timeline reale:
     ┌─────────────────────────────────────────────────────────────┐
     │ Timeline di eventi su LinkedIn:                              │
     ├─────────────────────────────────────────────────────────────┤
@@ -211,8 +229,7 @@ class JobFinder {
     │ 250ms:  ...silenzio...                                      │
     │ 300ms:  ...silenzio...                                      │
     │ 400ms:  ...silenzio...                                      │
-    │ 500ms:  ...silenzio...                                      │
-    │ 750ms:  ✅ analyzeJob() ESEGUITA!                           │
+    │ 500ms:  ✅ analyzeJob() ESEGUITA!                           │
     └─────────────────────────────────────────────────────────────┘
     */
     initObserver() {

@@ -1,7 +1,6 @@
 package com.amarildo.jobfinder.data.mapping;
 
 import com.amarildo.jobfinder.data.entity.JobPosting;
-import com.amarildo.jobfinder.data.entity.Language;
 import com.amarildo.openapi.model.JobPostingDto;
 import org.jetbrains.annotations.NotNull;
 import org.mapstruct.Mapper;
@@ -26,7 +25,7 @@ public interface JobPostingMapper {
     @Mapping(target = "body", source = "jobPostingDto.body")
     @Mapping(target = "language", source = "language")
     @Mapping(target = "postedDate", expression = "java(JobPostingMapper.parseRelativeDateToLocalDate(jobPostingDto.getPostedDate()))")
-    JobPosting toJobPosting(JobPostingDto jobPostingDto, Language language);
+    JobPosting toJobPosting(JobPostingDto jobPostingDto, String language);
 
     static LocalDate parseRelativeDateToLocalDate(@NotNull String input) {
         // Espressione regolare per catturare "<numero> <unità>"

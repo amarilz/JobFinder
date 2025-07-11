@@ -1,7 +1,6 @@
 package com.amarildo.jobfinder.data.repository;
 
 import com.amarildo.jobfinder.data.entity.JobPosting;
-import com.amarildo.jobfinder.data.entity.Language;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -19,5 +18,5 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
                 AND j.body = ?4
                 AND j.language = ?5
             ORDER BY j.postedDate""")
-    List<JobPosting> findByCompanyAndLocationAndTitleAndBodyAndLanguageOrderByPostedDateAsc(String company, String location, String title, String body, Language language);
+    List<JobPosting> findByCompanyAndLocationAndTitleAndBodyAndLanguageOrderByPostedDateAsc(String company, String location, String title, String body, String language);
 }

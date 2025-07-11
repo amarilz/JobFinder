@@ -1,53 +1,59 @@
 package com.amarildo.jobfinder.service;
 
 import com.amarildo.jobfinder.data.entity.JobPosting;
-import com.amarildo.jobfinder.data.entity.Language;
 import com.amarildo.jobfinder.data.mapping.JobPostingMapper;
 import com.amarildo.jobfinder.data.repository.JobPostingRepository;
-import com.amarildo.jobfinder.data.repository.LanguageRepository;
 import com.amarildo.jobfinder.error.BadRequestException;
-import com.amarildo.jobfinder.util.Util;
 import com.amarildo.openapi.model.Esito;
 import com.amarildo.openapi.model.JobPostingDto;
 import com.amarildo.openapi.model.JobPostingDtoResponse;
+import com.github.pemistahl.lingua.api.Language;
+import com.github.pemistahl.lingua.api.LanguageDetector;
+import com.github.pemistahl.lingua.api.LanguageDetectorBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
+import org.jsoup.Jsoup;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.SortedMap;
 
 import static com.amarildo.jobfinder.Constants.TRACE;
+import static com.github.pemistahl.lingua.api.Language.DANISH;
+import static com.github.pemistahl.lingua.api.Language.DUTCH;
+import static com.github.pemistahl.lingua.api.Language.ENGLISH;
+import static com.github.pemistahl.lingua.api.Language.FRENCH;
+import static com.github.pemistahl.lingua.api.Language.GERMAN;
+import static com.github.pemistahl.lingua.api.Language.ITALIAN;
+import static com.github.pemistahl.lingua.api.Language.POLISH;
+import static com.github.pemistahl.lingua.api.Language.SPANISH;
+import static com.github.pemistahl.lingua.api.Language.SWEDISH;
 
 @Service
 @Slf4j(topic = TRACE)
 public class JobService {
 
     private final JobPostingRepository jobPostingRepository;
-    private final LanguageRepository languageRepository;
     private final JobPostingMapper jobPostingMapper;
 
     @Autowired
     public JobService(
             JobPostingRepository jobPostingRepository,
-            LanguageRepository languageRepository,
             JobPostingMapper jobPostingMapper
     ) {
         this.jobPostingRepository = jobPostingRepository;
-        this.languageRepository = languageRepository;
         this.jobPostingMapper = jobPostingMapper;
     }
 
     public JobPostingDtoResponse newJob(JobPostingDto jobPostingDto) throws BadRequestException {
         validateInput(jobPostingDto);
-        String bodyText = Util.getTextFromHtmlBody(jobPostingDto.getBody());
+        String bodyText = getTextFromHtmlBody(jobPostingDto.getBody());
         jobPostingDto.setBody(bodyText);
 
         JobPostingDtoResponse result = new JobPostingDtoResponse();
-        Language language = calculateLanguage(jobPostingDto.getBody());
+        String language = calculateLanguage(jobPostingDto.getBody());
 
         List<JobPosting> byPostedDateAsc = jobPostingRepository.findByCompanyAndLocationAndTitleAndBodyAndLanguageOrderByPostedDateAsc(
                 jobPostingDto.getCompany(),
@@ -90,36 +96,29 @@ public class JobService {
     }
 
     @NotNull
-    private Language calculateLanguage(String body) {
-        List<Language> allLanguages = languageRepository.findAll();
-        Set<String> wordsInBody = Util.extractWordsFromText(body);
+    public static String getTextFromHtmlBody(String body) {
+        return Jsoup.parse(body).text();
+    }
 
-        Map<Language, Integer> languageOccurrences = new HashMap<>();
+    @NotNull
+    private String calculateLanguage(String body) {
+        LanguageDetector languageDetector = LanguageDetectorBuilder.Companion.fromLanguages(
+                ENGLISH, POLISH, GERMAN, DUTCH, DANISH, SPANISH, FRENCH, SWEDISH, ITALIAN).build();
+        SortedMap<Language, Double> languageDoubleSortedMap = languageDetector.computeLanguageConfidenceValues(body);
 
-        for (String word : wordsInBody) {
-            for (Language language : allLanguages) {
-                if (language.containsWord(word)) {
-                    languageOccurrences.merge(language, 1, Integer::sum);
-                }
-            }
-        }
-
-        Map.Entry<Language, Integer> bestMatch = languageOccurrences.entrySet()
+        List<Map.Entry<Language, Double>> top3 = languageDoubleSortedMap.entrySet()
                 .stream()
-                .max(Map.Entry.comparingByValue())
-                .orElseThrow(() -> new IllegalArgumentException("Impossibile determinare una lingua dal testo"));
+                .sorted(Map.Entry.<Language, Double>comparingByValue().reversed())
+                .limit(3)
+                .toList();
 
-        Language detectedLanguage = bestMatch.getKey();
-        int matchedWords = bestMatch.getValue();
-        int totalWords = wordsInBody.size();
+        String msg = "Detected language: %s with confidence scores - 1st: %s (%.2f%%), 2nd: %s (%.2f%%), 3rd: %s (%.2f%%)".formatted(
+                top3.get(0).getKey().name(),
+                top3.get(0).getKey().name(), top3.get(0).getValue() * 100,
+                top3.get(1).getKey().name(), top3.get(1).getValue() * 100,
+                top3.get(2).getKey().name(), top3.get(2).getValue() * 100);
+        log.info(msg);
 
-        double matchPercentage = (totalWords == 0)
-                ? 0.0
-                : (matchedWords * 100.0) / totalWords;
-        String formattedPercentage = String.format("%.2f", matchPercentage);
-        log.info("Lingua rilevata: {} (match: {} parole su {}, cioè {}%)",
-                detectedLanguage.getName(), matchedWords, totalWords, formattedPercentage);
-
-        return detectedLanguage;
+        return top3.getFirst().getKey().name();
     }
 }

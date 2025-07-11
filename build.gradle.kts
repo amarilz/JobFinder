@@ -59,6 +59,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("io.swagger.core.v3:swagger-annotations:2.2.34")
 
+    // reduce boilerplate code
     compileOnly("org.projectlombok:lombok")
     compileOnly("org.mapstruct:mapstruct:1.6.3")
     annotationProcessor("org.projectlombok:lombok-mapstruct-binding:0.2.0")
@@ -66,7 +67,11 @@ dependencies {
     annotationProcessor("org.projectlombok:lombok")
     implementation("org.jetbrains:annotations:26.0.2")
 
+    // for HTML strings handling
     implementation("org.jsoup:jsoup:1.21.1") // per togliere HTML dal body del job posting
+
+    // for language detection
+    implementation("com.github.pemistahl:lingua:1.2.2")
 
     runtimeOnly("com.h2database:h2")
 

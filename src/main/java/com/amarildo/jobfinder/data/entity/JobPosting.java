@@ -7,11 +7,8 @@ import com.fasterxml.jackson.datatype.jsr310.deser.LocalDateDeserializer;
 import com.fasterxml.jackson.datatype.jsr310.ser.LocalDateSerializer;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 import lombok.Getter;
@@ -53,9 +50,8 @@ public class JobPosting {
     @Column(name = "BODY", columnDefinition = "TEXT", nullable = false)
     private String body;
 
-    @ManyToOne(targetEntity = Language.class, fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "LANGUAGE_ID", nullable = false)
-    private Language language;
+    @Column(name = "LANGUAGE", length = 20, nullable = false)
+    private String language;
 
     @JsonDeserialize(using = LocalDateDeserializer.class)
     @JsonSerialize(using = LocalDateSerializer.class)
@@ -64,6 +60,8 @@ public class JobPosting {
     private LocalDate postedDate;
 
     public void setTitle(@NotNull String title) {
-        this.title = title.substring(0, 100);
+        this.title = (title.length() <= TITLE_MAX_LENGTH)
+                ? title
+                : title.substring(0, TITLE_MAX_LENGTH);
     }
 }

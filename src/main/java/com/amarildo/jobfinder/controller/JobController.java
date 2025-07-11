@@ -35,6 +35,8 @@ public class JobController implements JobApi {
         log.info("Request caught: {}", jobPostingDto);
 
         JobPostingDtoResponse jobPostingDtoResponse = jobService.newJob(jobPostingDto);
+
+        log.info("End");
         return ResponseEntity.ok(jobPostingDtoResponse);
     }
 }

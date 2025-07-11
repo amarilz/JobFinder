@@ -165,6 +165,7 @@ function applyResponseToJobCard(result) {
       bodyEl.style.opacity = '1.0';
       break;
     case 'TOO_MANY_CANDIDATES':
+    case 'UNSUITABLE_LANGUAGE':
       containerRightCard.style.backgroundColor = 'red';
       infoJob1El.style.opacity = '0.1';
       infoJob2El.style.opacity = '0.1';

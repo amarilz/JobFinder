@@ -145,9 +145,9 @@ components:
         - NEW # The job posting has just been acquired and hasn't been analyzed or processed yet
         - TOO_MANY_CANDIDATES
         - ALREADY_SEEN # The job posting has already been processed or viewed previously
+        - UNSUITABLE_LANGUAGE # The language of the job posting is not among those spoken or understood by the user
         - SKILLS_MISMATCH # The job posting requires skills that don't align with the user's profile
         - EXPERIENCE_MISMATCH # The job posting requires an experience level incompatible with the user's (e.g., too much or too little)
-        - UNSUITABLE_LANGUAGE # The language of the job posting is not among those spoken or understood by the user
         - UNSUITABLE_LOCATION # The job's location indicated in the posting is not in an area of interest to the user
         - UNSUITABLE_CONTRACT_TYPE # The type of contract offered (e.g., part-time, fixed-term, internship) is not what the user desires
 

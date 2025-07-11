@@ -9,6 +9,7 @@ import com.amarildo.openapi.model.JobPostingDtoResponse;
 import com.github.pemistahl.lingua.api.Language;
 import com.github.pemistahl.lingua.api.LanguageDetector;
 import com.github.pemistahl.lingua.api.LanguageDetectorBuilder;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
 import org.jsoup.Jsoup;
@@ -26,15 +27,7 @@ import static com.amarildo.jobfinder.Constants.TRACE;
 import static com.amarildo.openapi.model.Esito.ALREADY_SEEN;
 import static com.amarildo.openapi.model.Esito.NEW;
 import static com.amarildo.openapi.model.Esito.TOO_MANY_CANDIDATES;
-import static com.github.pemistahl.lingua.api.Language.DANISH;
-import static com.github.pemistahl.lingua.api.Language.DUTCH;
-import static com.github.pemistahl.lingua.api.Language.ENGLISH;
-import static com.github.pemistahl.lingua.api.Language.FRENCH;
-import static com.github.pemistahl.lingua.api.Language.GERMAN;
-import static com.github.pemistahl.lingua.api.Language.ITALIAN;
-import static com.github.pemistahl.lingua.api.Language.POLISH;
-import static com.github.pemistahl.lingua.api.Language.SPANISH;
-import static com.github.pemistahl.lingua.api.Language.SWEDISH;
+import static com.amarildo.openapi.model.Esito.UNSUITABLE_LANGUAGE;
 
 @Service
 @Slf4j(topic = TRACE)
@@ -43,8 +36,15 @@ public class JobService {
     private final JobPostingRepository jobPostingRepository;
     private final JobPostingMapper jobPostingMapper;
 
-    @Value(value = "${max.candidates}")
+    @Value(value = "${job.posting.max.candidates}")
     private int maxCandidates;
+
+    @Value("#{'${job.posting.language.handling}'.split(',')}")
+    private List<String> handlingLanguages;
+    private Language[] handlingLanguagesArray;
+
+    @Value("#{'${job.posting.language.preferred}'.split(',')}")
+    private List<String> preferredLanguages;
 
     @Autowired
     public JobService(
@@ -53,6 +53,14 @@ public class JobService {
     ) {
         this.jobPostingRepository = jobPostingRepository;
         this.jobPostingMapper = jobPostingMapper;
+    }
+
+    @PostConstruct
+    private void dfs() {
+        handlingLanguagesArray = handlingLanguages.stream()
+                .map(String::toUpperCase)
+                .map(Language::valueOf) // throws IllegalArgumentException if invalid
+                .toArray(Language[]::new);
     }
 
     public JobPostingDtoResponse newJob(JobPostingDto jobPostingDto) throws BadRequestException {
@@ -69,6 +77,14 @@ public class JobService {
         jobPostingDto.setBody(bodyText);
 
         String language = calculateLanguage(jobPostingDto.getBody());
+        if (!preferredLanguages.contains(language)){
+            String message = String.format(
+                    "Job posting language '%s' is not among the preferred languages: %s",
+                    language,
+                    String.join(", ", preferredLanguages));
+            log.info(message);
+            return new JobPostingDtoResponse(UNSUITABLE_LANGUAGE, message);
+        }
 
         List<JobPosting> byPostedDateAsc = jobPostingRepository.findByCompanyAndLocationAndTitleAndBodyAndLanguageOrderByPostedDateAsc(
                 jobPostingDto.getCompany(),
@@ -146,8 +162,7 @@ public class JobService {
 
     @NotNull
     private String calculateLanguage(String body) {
-        LanguageDetector languageDetector = LanguageDetectorBuilder.Companion.fromLanguages(
-                ENGLISH, POLISH, GERMAN, DUTCH, DANISH, SPANISH, FRENCH, SWEDISH, ITALIAN).build();
+        LanguageDetector languageDetector = LanguageDetectorBuilder.Companion.fromLanguages(handlingLanguagesArray).build();
         SortedMap<Language, Double> languageDoubleSortedMap = languageDetector.computeLanguageConfidenceValues(body);
 
         List<Map.Entry<Language, Double>> top3 = languageDoubleSortedMap.entrySet()

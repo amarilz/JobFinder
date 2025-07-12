@@ -4,6 +4,7 @@
 
     <property scope="context" name="applicazione" value="JOBFINDER"/>
     <property scope="context" name="componente" value="BE-JOBFINDER"/>
+    <property name="LOG_ROOT" value="${log.root:-./logs}"/>
 
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
@@ -12,10 +13,10 @@
     </appender>
 
     <appender name="TRACE_FILE_APPENDER" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <File>/var/log/app/be-jobfinder-trace.log</File>
+        <File>${LOG_ROOT}/be-jobfinder-trace.log</File>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
             <FileNamePattern>
-                /var/log/app/be-jobfinder-trace.log.%d{yyyy-MM-dd}
+                ${LOG_ROOT}/be-jobfinder-trace.log.%d{yyyy-MM-dd}
             </FileNamePattern>
         </rollingPolicy>
         <encoder>

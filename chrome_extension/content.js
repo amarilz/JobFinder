@@ -263,11 +263,16 @@ class JobFinder {
         return observer;
     }
 
+    escapeRegex(word) {
+        return word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
     highlightWords(element, words, color) {
         if (!element || !words || !Array.isArray(words) || words.length === 0) return;
 
         // regex per trovare le parole nel testo (case-insensitive)
-        const regex = new RegExp(`\\b(${words.join('|')})\\b`, 'gi');
+        const escapedWords = words.map(this.escapeRegex);
+        const regex = new RegExp(`\\b(${escapedWords.join('|')})\\b`, 'gi');
 
         // funzione ricorsiva che attraversa tutti i nodi di testo
         function walk(node) {

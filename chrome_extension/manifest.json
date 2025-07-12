@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "JobFinder",
+  "version": "1.0",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": ["http://localhost:8080/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["blacklist_words.json"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

@@ -10,6 +10,8 @@ servers:
 tags:
   - name: job
     description: Everything about your Jobs postings
+  - name: config
+    description: Everything about your application config
 
 paths:
 
@@ -31,6 +33,20 @@ paths:
           $ref: '#/components/responses/badRequest'
         '500':
           $ref: '#/components/responses/internalServerError'
+  /config:
+    parameters:
+      - $ref: '#/components/parameters/correlationIdRequestHeader'
+    get:
+      tags:
+        - config
+      summary: Get chrome extension config
+      description: Get extension config
+      operationId: getChromeExtensionConfig
+      responses:
+        '200':
+          $ref: '#/components/responses/chromeExtensionConfigResponseBody'
+        '500':
+          $ref: '#/components/responses/internalServerError'
 
 components:
 
@@ -49,6 +65,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/jobPostingDtoResponse'
+    chromeExtensionConfigResponseBody:
+      description: Success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/chromeExtensionConfigDtoResponse'
     # 200
     ok:
       description: Ok
@@ -120,6 +142,67 @@ components:
         message:
           type: string
           example: "Non sei interessato al C++"
+
+    chromeExtensionConfigDtoResponse:
+      type: object
+      required:
+        - htmlSelector
+        - positiveKeyword
+        - negativeKeyword
+      properties:
+        htmlSelector:
+          $ref: '#/components/schemas/htmlSelector'
+        positiveKeyword:
+          type: array
+          items:
+            type: string
+        negativeKeyword:
+          type: array
+          items:
+            type: string
+
+    htmlSelector:
+      type: object
+      required:
+        - containerCard
+        - company
+        - title
+        - location
+        - postedDate
+        - candidates
+        - body
+        - infoJob1
+        - infoJob2
+      properties:
+        company:
+          type: string
+          description: Nome dell'azienda
+        title:
+          type: string
+          description: Titolo dell'offerta (es. Software Engineer)
+        location:
+          type: string
+          description: Luogo dell'offerta di lavoro (es. Monaco)
+        postedDate:
+          type: string
+          description: Quanto tempo fa é stata postata questa offerta (es. 58 minutes ago)
+        candidates:
+          type: string
+          description: Quante persone si sono giá candidate
+        body:
+          type: string
+          description: Body dell'offerta
+        containerCard:
+          type: string
+          description: |
+            Card che contiene le informazioni principali dell'offerta (sopra il body). Questa card é quella
+            che verrá colorata
+        infoJob1:
+          type: string
+          description: Contiene luogo, data di posting e candidati
+        infoJob2:
+          type: string
+          description: Contiene Full-time e pubblicitá per il premium
 
     errorResponseMessage:
       type: object

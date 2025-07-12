@@ -1,23 +1,11 @@
 const CONFIG = {
     logPrefix: '[FE-JOBFINDER]',
-    debounceDelay: 250,
-    blacklistFile: 'blacklist_words.json',
-    apiEndpoint: '/be-jobfinder/api/v1/job'
+    debounceDelay: 200,
+    apiEndpointNewJob: '/be-jobfinder/api/v1/job',
+    apiEndpointGetConfig: '/be-jobfinder/api/v1/config'
 };
 
-const SELECTORS = {
-    company: "#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.display-flex.align-items-center > div.display-flex.align-items-center.flex-1 > div",
-    title: "#ember53",
-    location: "#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.job-details-jobs-unified-top-card__primary-description-container > div > span > span:nth-child(1)",
-    postedDate: "#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.job-details-jobs-unified-top-card__primary-description-container > div > span > span:nth-child(3)",
-    candidates: "#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.job-details-jobs-unified-top-card__primary-description-container > div > span > span:nth-child(5)",
-    body: "#job-details > div",
-    containerCard: '.job-details-jobs-unified-top-card__container--two-pane.relative',
-    infoJob1: "#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.job-details-jobs-unified-top-card__primary-description-container",
-    infoJob2: "#main > div > div.scaffold-layout__list-detail-inner.scaffold-layout__list-detail-inner--grow > div.scaffold-layout__detail.overflow-x-hidden.jobs-search__job-details > div > div.jobs-search__job-details--container > div > div.job-view-layout.jobs-details > div:nth-child(1) > div > div:nth-child(1) > div > div.relative.job-details-jobs-unified-top-card__container--two-pane > div > div.mt2.mb2"
-};
-
-const styleConfig = {
+const STYLE_CONFIG = {
     NEW: {
         bgColor: '#99EB99',
         opacity: '1.0'
@@ -36,6 +24,7 @@ const styleConfig = {
     }
 };
 
+// override log
 const originalConsoleLog = console.log;
 console.log = function(...args) { // ridefinisci console log
     originalConsoleLog.apply(console, [CONFIG.logPrefix, ...args]);
@@ -43,60 +32,128 @@ console.log = function(...args) { // ridefinisci console log
 
 class JobFinder {
     constructor() {
-        this.keywords = [];
-        this.lastAnalyzedJobKey = null;
+        this.lastJobKey = null;
         this.isAnalyzing = false;
         this.debounceTimer = null;
+
+        this.htmlSelectors = {};
+        this.positiveKeywords = [];
+        this.negativeKeywords = [];
     }
 
-    async loadKeywords() {
-        const url = chrome.runtime.getURL(CONFIG.blacklistFile);
-        try {
-            const response = await fetch(url);
-            if (!response.ok)
-                throw new Error('Errore nel caricamento blacklist_words.json');
+    async init() {
+        if (!window.location.pathname.includes('/jobs/')) {
+            console.log('Non è una pagina di job, estensione non attiva.');
+            return;
+        }
 
-            this.keywords = await response.json();
-            console.log(`Caricate ${this.keywords.length} keywords`);
-            return this.keywords;
+        console.log('Inizializzazione JobFinder...');
+        try {
+            await this.loadConfiguration();
+            await this.analyzeJob();
+            this.initObserver(); // start observer
+            console.log('JobAnalyzer inizializzato con successo');
         } catch (error) {
-            console.error('Errore caricamento keywords:', error);
-            this.keywords = [];
-            return [];
+            console.error('Errore nell\'inizializzazione:', error);
         }
     }
 
+    async loadConfiguration() {
+        const configData = await this.makeGetRequest(CONFIG.apiEndpointGetConfig);
+        if (!configData?.htmlSelector) {
+            console.error('Configurazione non valida:', configData);
+            return;
+        }
+
+        this.htmlSelectors = configData.htmlSelector;
+        this.positiveKeywords = configData.positiveKeyword || [];
+        this.negativeKeywords = configData.negativeKeyword || [];
+
+        console.log("Configurazione caricata:", configData);
+    }
+
     extractJobData() {
-        const getElementText = (selector, label = '') => {
+        const getText = (selector, label = '') => {
             const el = document.querySelector(selector);
-            if (!el && label) {
-                console.warn(`Elemento non trovato: ${label}`);
-            }
+            if (!el && label) console.warn(`Elemento non trovato: ${label}`);
             return el?.textContent?.trim() || '';
         };
 
         const jobData = {
             originWebsite: window.location.hostname, // current domain
-            company: getElementText(SELECTORS.company, 'company'),
-            location: getElementText(SELECTORS.location, 'location'),
-            title: getElementText(SELECTORS.title, 'title'),
-            candidates: getElementText(SELECTORS.candidates, 'candidates'),
-            body: getElementText(SELECTORS.body, 'body'),
-            postedDate: getElementText(SELECTORS.postedDate, 'postedDate')
+            company: getText(this.htmlSelectors.company, 'company'),
+            location: getText(this.htmlSelectors.location, 'location'),
+            title: getText(this.htmlSelectors.title, 'title'),
+            candidates: getText(this.htmlSelectors.candidates, 'candidates'),
+            body: getText(this.htmlSelectors.body, 'body'),
+            postedDate: getText(this.htmlSelectors.postedDate, 'postedDate')
         };
 
         if (!jobData.title || !jobData.company) {
-            throw new Error('Dati job incompleti: titolo o azienda mancanti');
+            throw new Error('Non sono riuscito a recuperare i dati di questa job post');
         }
 
         return jobData;
     }
 
-    generateJobKey(jobData) {
-        return `[${jobData.company}|${jobData.title}|${jobData.location}]`.toLowerCase();
+    generateJobKey({ company, title, location }) {
+        return `[${company}|${title}|${location}]`.toLowerCase();
     }
 
-    makePostRequest(endpoint, correlationId, data) {
+    async analyzeJob() {
+        if (this.isAnalyzing) {
+            console.log('Analisi già in corso, skip...');
+            return;
+        }
+
+        this.isAnalyzing = true;
+        let jobData;
+
+        try {
+            jobData = this.extractJobData();
+            const jobKey = this.generateJobKey(jobData);
+
+            if (jobKey === this.lastJobKey) {
+                console.log('Stessa offerta giá analizzata');
+                return;
+            }
+
+            this.lastJobKey = jobKey;
+            console.log("Analizzo offerta:", jobData);
+
+            const response = await this.makePostRequest(CONFIG.apiEndpointNewJob, jobData);
+            console.log("Risposta:", response)
+            this.applyResponseToJobCard(response);
+        } catch (error) {
+            console.error('Errore nella richiesta POST:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+            this.lastJobKey = null;
+        } finally {
+            this.isAnalyzing = false;
+        }
+    }
+
+    makeGetRequest(endpoint) {
+        const correlationId = crypto.randomUUID();
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({
+                action: 'makeRequest',
+                endpoint: endpoint,
+                method: 'GET',
+                headers: {
+                    'correlationId': correlationId
+                }
+            }, (response) => {
+                if (response.success) {
+                    resolve(response.data);
+                } else {
+                    reject(response);
+                }
+            });
+        });
+    }
+
+    makePostRequest(endpoint, data) {
+        const correlationId = crypto.randomUUID();
         return new Promise((resolve, reject) => {
             chrome.runtime.sendMessage({
                 action: 'makeRequest',
@@ -116,104 +173,52 @@ class JobFinder {
         });
     }
 
-    // Debounce per evitare analisi multiple
+    applyResponseToJobCard({esito, message}) {
+        const config = STYLE_CONFIG[esito] || STYLE_CONFIG.NEW;
+
+        const card = document.querySelector(this.htmlSelectors.containerCard);
+        if (!card) {
+            console.error("Contenitore principale non trovato");
+            return;
+        }
+        card.style.transition = "background-color 0.5s ease-in-out"; // imposta transizione per il background-color
+        card.style.backgroundColor = config.bgColor;
+
+        const titleEl = document.querySelector(this.htmlSelectors.title);
+        const infoJob1El = document.querySelector(this.htmlSelectors.infoJob1);
+        const infoJob2El = document.querySelector(this.htmlSelectors.infoJob2);
+        const bodyEl = document.querySelector(this.htmlSelectors.body)
+
+        if (titleEl) this.updateResultField(titleEl, `[${esito}: ${message}]`)
+        if (infoJob1El) infoJob1El.style.opacity = config.opacity;
+        if (infoJob2El) infoJob2El.style.opacity = config.opacity;
+        if (bodyEl) bodyEl.style.opacity = config.opacity;
+        if (bodyEl) {
+            this.highlightWords(bodyEl, this.positiveKeywords, '#99EB99');
+            this.highlightWords(bodyEl, this.negativeKeywords, '#DE5959');
+        }
+    }
+
+    updateResultField(titleEl, text) {
+        const id = 'job-extra-field';
+        let field = document.getElementById(id);
+
+        if (!field) {
+            field = document.createElement('span');
+            field.id = id;
+            field.style.marginLeft = '5px'; // aggiunge un piccolo margine
+            titleEl.parentElement?.appendChild(field);
+        }
+        field.textContent = text;
+    }
+
     debounce(func, delay) {
         return (...args) => {
-            // cancella il timer precedente (se esiste)
-            clearTimeout(this.debounceTimer);
-            // imposta un nuovo timer
-            this.debounceTimer = setTimeout(() => {
+            clearTimeout(this.debounceTimer); // cancella il timer precedente (se esiste)
+            this.debounceTimer = setTimeout(() => { // imposta un nuovo timer
                 func.apply(this, args) // esegui la funzione dopo il delay
             }, delay);
         };
-    }
-
-    async analyzeJob() {
-        if (this.isAnalyzing) {
-            console.log('Analisi già in corso, skip...');
-            return;
-        }
-
-        let jobData;
-        try {
-            this.isAnalyzing = true;
-            jobData = this.extractJobData();
-            const jobKey = this.generateJobKey(jobData);
-
-            if (jobKey === this.lastAnalyzedJobKey) {
-                console.log('Stesso job già analizzato recentemente, skip...');
-                return;
-            }
-            this.lastAnalyzedJobKey = jobKey;
-            console.log("Analizzo nuovo Job:", jobData);
-
-            const correlationId = crypto.randomUUID();
-            const response = await this.makePostRequest(CONFIG.apiEndpoint, correlationId, jobData);
-            this.applyResponseToJobCard(response);
-
-        } catch (error) {
-            console.error('Errore nella richiesta POST:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-
-            // rimuovi dalla cache se l'analisi è fallita
-            if (jobData?.title && jobData?.company) {
-                const jobKey = this.generateJobKey(jobData);
-                this.lastAnalyzedJobKey = null;
-            }
-        } finally {
-            this.isAnalyzing = false;
-        }
-    }
-
-    applyResponseToJobCard(result) {
-        const {
-            esito,
-            message
-        } = result;
-        console.log("Risposta:", result)
-
-        const config = styleConfig[esito];
-        if (!config) {
-            console.warn(`Esito sconosciuto: ${esito}, applico stile di default`);
-        }
-        const finalConfig = config || styleConfig.NEW;
-
-        const containerRightCard = document.querySelector('.job-details-jobs-unified-top-card__container--two-pane.relative');
-        if (!containerRightCard) {
-            console.error("Contenitore principale non trovato.");
-            return;
-        }
-
-        const titleEl = document.querySelector(SELECTORS.title);
-        const infoJob1El = document.querySelector(SELECTORS.infoJob1);
-        const infoJob2El = document.querySelector(SELECTORS.infoJob2);
-        const bodyEl = document.querySelector(SELECTORS.body)
-
-        containerRightCard.style.transition = "background-color 0.5s ease-in-out"; // imposta transizione per il background-color
-        containerRightCard.style.backgroundColor = finalConfig.bgColor;
-        if (infoJob1El) infoJob1El.style.opacity = finalConfig.opacity;
-        if (infoJob2El) infoJob2El.style.opacity = finalConfig.opacity;
-        if (bodyEl) bodyEl.style.opacity = finalConfig.opacity;
-        if (titleEl) this.createOrUpdateResultField(titleEl, `[${esito}: ${message}]`)
-    }
-
-    createOrUpdateResultField(titleEl, text) {
-        // id univoco del campo nuovo
-        const newFieldId = 'job-extra-field';
-        // cerca il campo tramite il suo ID unico
-        let extraField = document.getElementById(newFieldId);
-        // controllo se il campo esiste, aggiorna solo il testo
-        if (extraField) {
-            extraField.textContent = text;
-        } else {
-            // non esiste quindi lo creo
-            const titleParentElement = titleEl.parentElement;
-
-            extraField = document.createElement('span');
-            extraField.id = newFieldId;
-            extraField.textContent = text;
-            extraField.style.marginLeft = '5px'; // aggiunge un piccolo margine
-            titleParentElement.appendChild(extraField);
-        }
     }
 
     // Inizializza l'observer
@@ -245,10 +250,8 @@ class JobFinder {
                 )
             );
 
-            if (hasRelevantChanges) {
-                // invece di: this.analyzeJob() (immediata)
+            if (hasRelevantChanges)
                 debouncedAnalyze(); // aspetta 500ms di "silenzio"
-            }
         });
 
         observer.observe(document.body, {
@@ -260,29 +263,31 @@ class JobFinder {
         return observer;
     }
 
-    // Inizializza l'intera applicazione
-    async init() {
-        try {
-            if (!window.location.pathname.includes('/jobs/')) {
-                console.log('Non è una pagina di job, estensione non attiva.');
-                return;
+    highlightWords(element, words, color) {
+        if (!element || !words || !Array.isArray(words) || words.length === 0) return;
+
+        // regex per trovare le parole nel testo (case-insensitive)
+        const regex = new RegExp(`\\b(${words.join('|')})\\b`, 'gi');
+
+        // funzione ricorsiva che attraversa tutti i nodi di testo
+        function walk(node) {
+            if (node.nodeType === Node.TEXT_NODE && regex.test(node.textContent)) { // se il nodo è di tipo testo
+                // sostituisce il nodo testuale con nodi HTML
+                const span = document.createElement('span');
+                span.innerHTML = node.textContent.replace(regex, (match) => {
+                    return `<span style="background-color: ${color};">${match}</span>`;
+                });
+
+                while (span.firstChild) {
+                    node.parentNode.insertBefore(span.firstChild, node);
+                }
+                node.parentNode.removeChild(node);
+            } else if (node.nodeType === Node.ELEMENT_NODE) { // se il nodo ha figli, chiama ricorsivamente
+                Array.from(node.childNodes).forEach(walk);
             }
-
-            console.log('Inizializzazione JobFinder...');
-
-            // Carica keywords
-            await this.loadKeywords();
-
-            // Esegui prima analisi
-            await this.analyzeJob();
-
-            // Inizializza observer
-            this.initObserver();
-
-            console.log('JobAnalyzer inizializzato con successo');
-        } catch (error) {
-            console.error('Errore nell\'inizializzazione:', error);
         }
+
+        walk(element);
     }
 }
 

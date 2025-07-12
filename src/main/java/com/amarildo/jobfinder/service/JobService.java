@@ -77,7 +77,7 @@ public class JobService {
         jobPostingDto.setBody(bodyText);
 
         String language = calculateLanguage(jobPostingDto.getBody());
-        if (!preferredLanguages.contains(language)){
+        if (!preferredLanguages.contains(language)) {
             String message = String.format(
                     "Job posting language '%s' is not among the preferred languages: %s",
                     language,

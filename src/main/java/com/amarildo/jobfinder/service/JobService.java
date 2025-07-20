@@ -100,12 +100,13 @@ public class JobService {
                     : String.format("Job posting vista in passato %s volte. Ultima volta nella data %s", visteCount, byPostedDateAsc.getLast().getPostedDate());
             log.info(msg);
 
+            JobPosting jobPosting = jobPostingMapper.toJobPosting(jobPostingDto, language);
+            jobPostingRepository.save(jobPosting);
             return new JobPostingDtoResponse(ALREADY_SEEN, msg);
         }
 
         JobPosting jobPosting = jobPostingMapper.toJobPosting(jobPostingDto, language);
         jobPostingRepository.save(jobPosting);
-
         return new JobPostingDtoResponse(NEW, "");
     }
 

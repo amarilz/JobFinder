@@ -9,6 +9,8 @@ import com.amarildo.openapi.model.JobPostingDtoResponse;
 import com.github.pemistahl.lingua.api.Language;
 import com.github.pemistahl.lingua.api.LanguageDetector;
 import com.github.pemistahl.lingua.api.LanguageDetectorBuilder;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -33,6 +35,7 @@ import static com.amarildo.openapi.model.Esito.UNSUITABLE_LANGUAGE;
 @Slf4j(topic = TRACE)
 public class JobService {
 
+    private final MeterRegistry meterRegistry;
     private final JobPostingRepository jobPostingRepository;
     private final JobPostingMapper jobPostingMapper;
 
@@ -46,13 +49,25 @@ public class JobService {
     @Value("#{'${job.posting.language.preferred}'.split(',')}")
     private List<String> preferredLanguages;
 
+    private final Counter newJobCounter;
+    private final Counter wrongLanguageCounter;
+    private final Counter oldJobCounter;
+    private final Counter tooManyCandidatesCounter;
+
     @Autowired
     public JobService(
+            MeterRegistry meterRegistry,
             JobPostingRepository jobPostingRepository,
             JobPostingMapper jobPostingMapper
     ) {
+        this.meterRegistry = meterRegistry;
         this.jobPostingRepository = jobPostingRepository;
         this.jobPostingMapper = jobPostingMapper;
+
+        newJobCounter = meterRegistry.counter("new_job");
+        wrongLanguageCounter = meterRegistry.counter("wrong_language");
+        oldJobCounter = meterRegistry.counter("old_job");
+        tooManyCandidatesCounter = meterRegistry.counter("too_many_candidates");
     }
 
     @PostConstruct
@@ -70,6 +85,7 @@ public class JobService {
         if (candidates > maxCandidates) {
             String message = String.format("Candidate count %d exceeds the maximum allowed limit of %d", candidates, maxCandidates);
             log.info(message);
+            tooManyCandidatesCounter.increment();
             return new JobPostingDtoResponse(TOO_MANY_CANDIDATES, message);
         }
 
@@ -83,6 +99,7 @@ public class JobService {
                     language,
                     String.join(", ", preferredLanguages));
             log.info(message);
+            wrongLanguageCounter.increment();
             return new JobPostingDtoResponse(UNSUITABLE_LANGUAGE, message);
         }
 
@@ -102,11 +119,13 @@ public class JobService {
 
             JobPosting jobPosting = jobPostingMapper.toJobPosting(jobPostingDto, language);
             jobPostingRepository.save(jobPosting);
+            oldJobCounter.increment();
             return new JobPostingDtoResponse(ALREADY_SEEN, msg);
         }
 
         JobPosting jobPosting = jobPostingMapper.toJobPosting(jobPostingDto, language);
         jobPostingRepository.save(jobPosting);
+        newJobCounter.increment();
         return new JobPostingDtoResponse(NEW, "");
     }
 

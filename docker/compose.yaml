@@ -3,7 +3,7 @@ services:
 
   database:
     image: postgres:16
-    container_name: postgres_database
+    container_name: postgres
     ports:
       - "5432:5432"
     environment:
@@ -12,6 +12,28 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - type: bind
+        source: ./prometheus/prometheus.yml
+        target: /etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - type: bind
+        source: ./grafana/provisioning
+        target: /etc/grafana/provisioning
+    depends_on:
+      - prometheus
 
   be-job-finder:
     container_name: be-job-finder
@@ -31,6 +53,8 @@ services:
       - ./.env
     depends_on:
       - database
+      - prometheus
+      - grafana
 
 volumes:
   postgres_data:

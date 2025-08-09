@@ -14,20 +14,24 @@ RUN gradle --no-daemon clean bootJar
 # ====== STAGE 2: RUNTIME ======
 FROM eclipse-temurin:21-jre-ubi9-minimal
 
-# Variabili runtime (possono essere sovrascritte con -e in docker run)
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
 
-# Utente non-root (UBI usa useradd)
-RUN useradd -r -u 1001 -g root spring
-USER 1001
+# Crea utente/gruppo non-root
+RUN groupadd -g 1001 spring && useradd -r -u 1001 -g spring spring
 
 WORKDIR /app
 
-# Copia il jar dall’immagine builder (nome generico)
-ARG JAR=build/libs/app.jar
+# Precrea la dir dei log dentro l'immagine (utile anche quando il volume non è montato)
+RUN mkdir -p /app/logs && chown -R spring:spring /app
+
+# Copia il jar
 COPY --from=builder /home/gradle/project/build/libs/*.jar /app/app.jar
+
+# Copia l'entrypoint che sistema i permessi del volume e droppa i privilegi
+COPY /docker/app/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 EXPOSE 8080
 
-# ENTRYPOINT che avvia l'applicazione e specifica il file di proprietà da usare
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Dspring.config.location=file:./application.properties -jar app.jar"]
+# Rimaniamo root per poter fare chown sul volume montato, poi droppiamo a 'spring'
+ENTRYPOINT ["/app/entrypoint.sh"]

@@ -66,6 +66,45 @@ services:
       retries: 10
     restart: unless-stopped
 
+  elasticsearch:
+    image: elasticsearch:9.1.0
+    container_name: elasticsearch
+    hostname: elasticsearch
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false # Disable security for testing
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9200/_cluster/health" ]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+
+  fluentd:
+    build: ./fluentd
+    container_name: fluentd
+    hostname: fluentd
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    volumes:
+      - ./fluentd/conf:/fluentd/etc
+      - app_logs:/app/logs
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  kibana:
+    image: kibana:9.1.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
   be-job-finder:
     container_name: be-job-finder
     build:
@@ -73,7 +112,13 @@ services:
       dockerfile: Dockerfile
     ports:
       - "127.0.0.1:8080:8080"
-    # monta i file in sola lettura per evitare modifiche accidentali
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "127.0.0.1:24224"
+        tag: "java.app.{{.Name}}"
+        labels: "env,service,component,version"
+        fluentd-async: 'true'
     volumes:
       - type: bind
         source: ./app/application.properties
@@ -83,6 +128,7 @@ services:
         source: ./app/logback.xml
         target: /app/logback.xml
         read_only: true
+      - app_logs:/app/logs
     env_file:
       - ./.env
     depends_on:
@@ -91,6 +137,8 @@ services:
       prometheus:
         condition: service_healthy
       grafana:
+        condition: service_healthy
+      elasticsearch:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/be-jobfinder/actuator/health"]
@@ -103,3 +151,4 @@ volumes:
   postgres_data:
   prometheus_data:
   grafana_data:
+  app_logs:

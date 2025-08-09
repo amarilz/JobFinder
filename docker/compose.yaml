@@ -5,35 +5,66 @@ services:
     image: postgres:16
     container_name: postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - type: volume
+        source: postgres_data
+        target: /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus
+    image: prom/prometheus:latest
     container_name: prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
     volumes:
       - type: bind
         source: ./prometheus/prometheus.yml
         target: /etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
+        read_only: true
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana:latest
     container_name: grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - type: bind
         source: ./grafana/provisioning
         target: /etc/grafana/provisioning
+        read_only: true
+      - type: volume
+        source: grafana_data
+        target: /var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: ${GF_USERS_ALLOW_SIGN_UP}
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
   be-job-finder:
     container_name: be-job-finder
@@ -41,20 +72,34 @@ services:
       context: ./../
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
+    # monta i file in sola lettura per evitare modifiche accidentali
     volumes:
       - type: bind
         source: ./app/application.properties
         target: /app/application.properties
+        read_only: true
       - type: bind
         source: ./app/logback.xml
         target: /app/logback.xml
+        read_only: true
     env_file:
       - ./.env
     depends_on:
-      - database
-      - prometheus
-      - grafana
+      database:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/be-jobfinder/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  prometheus_data:
+  grafana_data:

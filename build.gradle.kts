@@ -59,6 +59,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("io.swagger.core.v3:swagger-annotations:2.2.34")
 
+    // database
+    runtimeOnly("com.h2database:h2")
+    runtimeOnly("org.postgresql:postgresql")
     // reduce boilerplate code
     compileOnly("org.projectlombok:lombok")
     compileOnly("org.mapstruct:mapstruct:1.6.3")

@@ -1,0 +1,36 @@
+name: job-finder
+services:
+
+  database:
+    image: postgres:16
+    container_name: postgres_database
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  be-job-finder:
+    container_name: be-job-finder
+    build:
+      context: ./../
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - type: bind
+        source: ./app/application.properties
+        target: /app/application.properties
+      - type: bind
+        source: ./app/logback.xml
+        target: /app/logback.xml
+    env_file:
+      - ./.env
+    depends_on:
+      - database
+
+volumes:
+  postgres_data:

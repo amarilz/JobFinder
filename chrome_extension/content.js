@@ -26,6 +26,7 @@ const STYLE_CONFIG = {
 
 // override log
 const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
 console.log = function (...args) { // ridefinisci console log
     originalConsoleLog.apply(console, [CONFIG.logPrefix, ...args]);
 };
@@ -35,33 +36,53 @@ class JobFinder {
         this.lastJobKey = null;
         this.isAnalyzing = false;
         this.debounceTimer = null;
+        this.logPrefix = CONFIG.logPrefix;
 
         this.htmlSelectors = {};
         this.positiveKeywords = [];
         this.negativeKeywords = [];
     }
 
+    setLogContext(company, title) {
+        const context = [company, title]
+            .map(value => value?.trim())
+            .filter(Boolean)
+            .join(' - ');
+
+        this.logPrefix = context
+            ? `${CONFIG.logPrefix}[${context}]`
+            : CONFIG.logPrefix;
+    }
+
+    log(...args) {
+        originalConsoleLog.apply(console, [this.logPrefix, ...args]);
+    }
+
+    error(...args) {
+        originalConsoleError.apply(console, [this.logPrefix, ...args]);
+    }
+
     async init() {
         if (!window.location.pathname.includes('/jobs/')) {
-            console.log('Non è una pagina di job, estensione non attiva.');
+            this.log('Non è una pagina di job, estensione non attiva.');
             return;
         }
 
-        console.log('Inizializzazione JobFinder...');
+        this.log('Inizializzazione JobFinder...');
         try {
             await this.loadConfiguration();
             await this.analyzeJob();
             this.initObserver(); // start observer
-            console.log('JobAnalyzer inizializzato con successo');
+            this.log('JobAnalyzer inizializzato con successo');
         } catch (error) {
-            console.error('Errore nell\'inizializzazione:', error);
+            this.error('Errore nell\'inizializzazione:', error);
         }
     }
 
     async loadConfiguration() {
         const configData = await this.makeGetRequest(CONFIG.apiEndpointGetConfig);
         if (!configData?.htmlSelector) {
-            console.error('Configurazione non valida:', configData);
+            this.error('Configurazione non valida:', configData);
             return;
         }
 
@@ -69,7 +90,7 @@ class JobFinder {
         this.positiveKeywords = configData.positiveKeyword || [];
         this.negativeKeywords = configData.negativeKeyword || [];
 
-        console.log("Configurazione caricata:", configData);
+        this.log("Configurazione caricata:", configData);
     }
 
     async expandJobDescription() {
@@ -84,6 +105,14 @@ class JobFinder {
             return;
         }
 
+        const title = jobRoot.querySelector(this.htmlSelectors.title) ||
+            jobRoot.querySelector('a[href*="/jobs/view/"]');
+        const company = jobRoot.querySelector(this.htmlSelectors.company) ||
+            jobRoot.querySelector('a[href*="/company/"][href*="/life/"]') ||
+            jobRoot.querySelector('a[href*="/company/"]');
+
+        this.setLogContext(company?.textContent, title?.textContent);
+        this.log('Click automatico su More per espandere la job description');
         moreButton.click();
         await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }
@@ -234,7 +263,7 @@ class JobFinder {
 
     async analyzeJob() {
         if (this.isAnalyzing) {
-            console.log('Analisi già in corso, skip...');
+            this.log('Analisi già in corso, skip...');
             return;
         }
 
@@ -244,21 +273,22 @@ class JobFinder {
         try {
             await this.expandJobDescription();
             jobData = this.extractJobData();
+            this.setLogContext(jobData.company, jobData.title);
             const jobKey = this.generateJobKey(jobData);
 
             if (jobKey === this.lastJobKey) {
-                console.log('Stessa offerta giá analizzata');
+                this.log('Stessa offerta giá analizzata');
                 return;
             }
 
             this.lastJobKey = jobKey;
-            console.log("Analizzo offerta:", jobData);
+            this.log("Analizzo offerta:", jobData);
 
             const response = await this.makePostRequest(CONFIG.apiEndpointNewJob, jobData);
-            console.log("Risposta:", response)
+            this.log("Risposta:", response)
             this.applyResponseToJobCard(response);
         } catch (error) {
-            console.error('Errore nella richiesta POST:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+            this.error('Errore nella richiesta POST:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
             this.lastJobKey = null;
         } finally {
             this.isAnalyzing = false;
@@ -326,7 +356,7 @@ class JobFinder {
             document.querySelector(this.htmlSelectors.containerCard);
 
         if (!card) {
-            console.error("Contenitore principale non trovato");
+            this.error("Contenitore principale non trovato");
             return;
         }
 
@@ -418,7 +448,7 @@ class JobFinder {
             subtree: true
         });
 
-        console.log('Observer inizializzato');
+        this.log('Observer inizializzato');
         return observer;
     }
 

@@ -26,7 +26,7 @@ const STYLE_CONFIG = {
 
 // override log
 const originalConsoleLog = console.log;
-console.log = function(...args) { // ridefinisci console log
+console.log = function (...args) { // ridefinisci console log
     originalConsoleLog.apply(console, [CONFIG.logPrefix, ...args]);
 };
 
@@ -70,6 +70,22 @@ class JobFinder {
         this.negativeKeywords = configData.negativeKeyword || [];
 
         console.log("Configurazione caricata:", configData);
+    }
+
+    async expandJobDescription() {
+        const jobRoot = document.querySelector(
+            '[data-sdui-screen="com.linkedin.sdui.flagshipnav.jobs.SemanticJobDetails"]'
+        );
+        const moreButton = jobRoot?.querySelector(
+            '[id^="JobDetails_AboutTheJob_"] [data-testid="expandable-text-button"]'
+        );
+
+        if (!moreButton || !/\bmore\b/i.test(moreButton.textContent || '')) {
+            return;
+        }
+
+        moreButton.click();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }
 
     extractJobData() {
@@ -125,9 +141,9 @@ class JobFinder {
             location: location,
             title: titleEl?.textContent?.trim() || '',
             candidates: candidates,
-            body:  bodyEl?.textContent
-                        ?.replace(/^About the job\s*/i, '')
-                        ?.trim() || '',
+            body: bodyEl?.textContent
+                ?.replace(/^About the job\s*/i, '')
+                ?.trim() || '',
             postedDate: postedDate
         };
 
@@ -226,6 +242,7 @@ class JobFinder {
         let jobData;
 
         try {
+            await this.expandJobDescription();
             jobData = this.extractJobData();
             const jobKey = this.generateJobKey(jobData);
 
@@ -298,7 +315,7 @@ class JobFinder {
         return jobId || new URLSearchParams(window.location.search).get('currentJobId');
     }
 
-    applyResponseToJobCard({esito, message}) {
+    applyResponseToJobCard({ esito, message }) {
         const config = STYLE_CONFIG[esito] || STYLE_CONFIG.NEW;
 
         const jobId = this.getCurrentJobId();

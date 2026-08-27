@@ -1,6 +1,7 @@
 package com.amarildo.jobfinder.service;
 
 import com.amarildo.jobfinder.data.entity.JobApplication;
+import com.amarildo.jobfinder.data.entity.JobApplicationStatus;
 import com.amarildo.jobfinder.data.entity.JobPosting;
 import com.amarildo.jobfinder.data.mapping.JobPostingMapper;
 import com.amarildo.jobfinder.data.repository.JobApplicationRepository;
@@ -8,6 +9,9 @@ import com.amarildo.jobfinder.data.repository.JobPostingRepository;
 import com.amarildo.jobfinder.error.BadRequestException;
 import com.amarildo.openapi.model.JobApplicationDto;
 import com.amarildo.openapi.model.JobApplicationDtoResponse;
+import com.amarildo.openapi.model.JobApplicationListItemDto;
+import com.amarildo.openapi.model.JobApplicationStatusDto;
+import com.amarildo.openapi.model.UpdateJobApplicationStatusDto;
 import com.amarildo.openapi.model.JobPostingDto;
 import com.amarildo.openapi.model.JobPostingDtoResponse;
 import com.github.pemistahl.lingua.api.Language;
@@ -166,8 +170,41 @@ public class JobService {
         JobApplication jobApplication = new JobApplication();
         jobApplication.setJobPosting(jobPosting);
         jobApplication.setApplicationDate(LocalDate.now());
+        jobApplication.setStatus(JobApplicationStatus.DROP_CV);
         jobApplicationRepository.save(jobApplication);
         return new JobApplicationDtoResponse(true);
+    }
+
+    public List<JobApplicationListItemDto> getJobApplications() {
+        return jobApplicationRepository.findAllByOrderByApplicationDateDescIdDesc().stream()
+                .map(this::toListItemDto)
+                .toList();
+    }
+
+    public JobApplicationListItemDto updateJobApplicationStatus(
+            Long applicationId,
+            UpdateJobApplicationStatusDto statusDto) throws BadRequestException {
+        if (statusDto == null || statusDto.getStatus() == null) {
+            throw new BadRequestException("Application status cannot be null");
+        }
+
+        JobApplication application = jobApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new BadRequestException("Job application not found"));
+        application.setStatus(JobApplicationStatus.valueOf(statusDto.getStatus().getValue()));
+        return toListItemDto(jobApplicationRepository.save(application));
+    }
+
+    private JobApplicationListItemDto toListItemDto(JobApplication application) {
+        JobPosting posting = application.getJobPosting();
+        return new JobApplicationListItemDto(
+                application.getId(),
+                posting.getOriginWebsite(),
+                posting.getCompany(),
+                posting.getLocation(),
+                posting.getTitle(),
+                posting.getPostedDate(),
+                application.getApplicationDate(),
+                JobApplicationStatusDto.fromValue(application.getStatus().name()));
     }
 
     private boolean getApplicationStatus(JobPostingDto jobPostingDto) {

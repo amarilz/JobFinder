@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="it">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Le candidature salvate con JobFinder">
+    <title>Le mie candidature · JobFinder</title>
+    <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<main class="shell">
+    <header class="hero">
+        <div>
+            <p class="eyebrow">JobFinder</p>
+            <h1>Le mie candidature</h1>
+            <p class="intro">Tutte le posizioni a cui hai inviato il CV, in un unico posto.</p>
+        </div>
+        <div class="total" aria-live="polite">
+            <strong id="application-count">—</strong>
+            <span>candidature</span>
+        </div>
+    </header>
+
+    <section class="toolbar" aria-label="Filtri candidature">
+        <label class="search-field">
+            <span>Cerca</span>
+            <input id="search" type="search" placeholder="Ruolo, azienda o località…" autocomplete="off">
+        </label>
+        <label class="status-filter">
+            <span>Stato</span>
+            <select id="status-filter">
+                <option value="">Tutti gli stati</option>
+                <option value="DROP_CV">CV inviato</option>
+                <option value="INTERVIEWING">Colloqui</option>
+                <option value="OFFER">Offerta ricevuta</option>
+                <option value="ACCEPTED">Accettata</option>
+                <option value="REJECTED">Rifiutata</option>
+            </select>
+        </label>
+    </section>
+
+    <section id="application-list" class="application-list" aria-live="polite"></section>
+
+    <div id="empty-state" class="empty-state" hidden>
+        <p class="empty-title">Nessuna candidatura trovata</p>
+        <p>Prova a modificare i filtri oppure candidati a una nuova posizione.</p>
+    </div>
+
+    <div id="error-state" class="error-state" hidden role="alert">
+        <p>Non è stato possibile caricare le candidature.</p>
+        <button id="retry" type="button">Riprova</button>
+    </div>
+</main>
+
+<template id="application-template">
+    <article class="application-card">
+        <div class="card-main">
+            <p class="company"></p>
+            <h2 class="title"></h2>
+            <p class="location"></p>
+            <div class="dates">
+                <span class="application-date"></span>
+                <span class="posted-date"></span>
+            </div>
+        </div>
+        <div class="card-actions">
+            <label>
+                <span>Stato candidatura</span>
+                <select class="application-status">
+                    <option value="DROP_CV">CV inviato</option>
+                    <option value="INTERVIEWING">Colloqui</option>
+                    <option value="OFFER">Offerta ricevuta</option>
+                    <option value="ACCEPTED">Accettata</option>
+                    <option value="REJECTED">Rifiutata</option>
+                </select>
+            </label>
+            <a class="job-link" target="_blank" rel="noopener noreferrer">Apri offerta <span aria-hidden="true">↗</span></a>
+        </div>
+    </article>
+</template>
+
+<script src="/app.js" defer></script>
+</body>
+</html>

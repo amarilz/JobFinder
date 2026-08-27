@@ -72,6 +72,53 @@ paths:
           $ref: '#/components/responses/badRequest'
         '500':
           $ref: '#/components/responses/internalServerError'
+  /job/applications:
+    get:
+      tags:
+        - job
+      summary: Get all job applications
+      operationId: getJobApplications
+      responses:
+        '200':
+          description: Job applications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/jobApplicationListItemDto'
+        '500':
+          $ref: '#/components/responses/internalServerError'
+  /job/application/{applicationId}/status:
+    parameters:
+      - name: applicationId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+    patch:
+      tags:
+        - job
+      summary: Update the workflow status of a job application
+      operationId: updateJobApplicationWorkflowStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/updateJobApplicationStatusDto'
+      responses:
+        '200':
+          description: Updated job application
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/jobApplicationListItemDto'
+        '400':
+          $ref: '#/components/responses/badRequest'
+        '500':
+          $ref: '#/components/responses/internalServerError'
 
 components:
 
@@ -193,6 +240,55 @@ components:
       properties:
         applied:
           type: boolean
+
+    jobApplicationStatusDto:
+      type: string
+      enum:
+        - DROP_CV
+        - REJECTED
+        - INTERVIEWING
+        - OFFER
+        - ACCEPTED
+
+    updateJobApplicationStatusDto:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          $ref: '#/components/schemas/jobApplicationStatusDto'
+
+    jobApplicationListItemDto:
+      type: object
+      required:
+        - id
+        - originWebsite
+        - company
+        - location
+        - title
+        - postedDate
+        - applicationDate
+        - status
+      properties:
+        id:
+          type: integer
+          format: int64
+        originWebsite:
+          type: string
+        company:
+          type: string
+        location:
+          type: string
+        title:
+          type: string
+        postedDate:
+          type: string
+          format: date
+        applicationDate:
+          type: string
+          format: date
+        status:
+          $ref: '#/components/schemas/jobApplicationStatusDto'
 
     chromeExtensionConfigDtoResponse:
       type: object

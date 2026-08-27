@@ -2,6 +2,8 @@ package com.amarildo.jobfinder.data.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -31,4 +33,8 @@ public class JobApplication {
 
     @Column(name = "APPLICATION_DATE", nullable = false)
     private LocalDate applicationDate;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "STATUS", length = 50, nullable = false)
+    private JobApplicationStatus status = JobApplicationStatus.DROP_CV;
 }

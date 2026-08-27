@@ -3,7 +3,7 @@ services:
 
   database:
     image: postgres:16
-    container_name: postgres
+    container_name: postgres_job_finder
     ports:
       - "127.0.0.1:5432:5432"
     environment:
@@ -21,89 +21,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    ports:
-      - "127.0.0.1:9090:9090"
-    volumes:
-      - type: bind
-        source: ./prometheus/prometheus.yml
-        target: /etc/prometheus/prometheus.yml
-        read_only: true
-      - prometheus_data:/prometheus
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    ports:
-      - "127.0.0.1:3000:3000"
-    volumes:
-      - type: bind
-        source: ./grafana/provisioning
-        target: /etc/grafana/provisioning
-        read_only: true
-      - type: volume
-        source: grafana_data
-        target: /var/lib/grafana
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
-      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
-      GF_USERS_ALLOW_SIGN_UP: ${GF_USERS_ALLOW_SIGN_UP}
-    depends_on:
-      prometheus:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
-  elasticsearch:
-    image: elasticsearch:9.1.0
-    container_name: elasticsearch
-    hostname: elasticsearch
-    ports:
-      - "9200:9200"
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false # Disable security for testing
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9200/_cluster/health" ]
-      interval: 10s
-      retries: 5
-      timeout: 5s
-
-  fluentd:
-    build: ./fluentd
-    container_name: fluentd
-    hostname: fluentd
-    ports:
-      - "24224:24224"
-      - "24224:24224/udp"
-    volumes:
-      - ./fluentd/conf:/fluentd/etc
-      - app_logs:/app/logs
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-
-  kibana:
-    image: kibana:9.1.0
-    container_name: kibana
-    ports:
-      - "5601:5601"
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
 
   be-job-finder:
     container_name: be-job-finder
@@ -133,12 +50,6 @@ services:
       - ./.env
     depends_on:
       database:
-        condition: service_healthy
-      prometheus:
-        condition: service_healthy
-      grafana:
-        condition: service_healthy
-      elasticsearch:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/be-jobfinder/actuator/health"]

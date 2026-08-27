@@ -1,6 +1,6 @@
 const CONFIG = {
     logPrefix: '[FE-JOBFINDER]',
-    debounceDelay: 200,
+    debounceDelay: 10,
     apiEndpointNewJob: '/be-jobfinder/api/v1/job',
     apiEndpointGetConfig: '/be-jobfinder/api/v1/config'
 };
@@ -73,27 +73,143 @@ class JobFinder {
     }
 
     extractJobData() {
-        const getText = (selector, label = '') => {
-            const el = document.querySelector(selector);
-            if (!el && label) console.warn(`Elemento non trovato: ${label}`);
-            return el?.textContent?.trim() || '';
+        const jobRoot =
+            document.querySelector(
+                '[data-sdui-screen="com.linkedin.sdui.flagshipnav.jobs.SemanticJobDetails"]'
+            ) || document;
+
+        const queryFirst = (...selectors) => {
+            for (const selector of selectors.filter(Boolean)) {
+                try {
+                    const element = jobRoot.querySelector(selector);
+
+                    if (element) {
+                        return element;
+                    }
+                } catch (error) {
+                    console.warn(`Selector non valido: ${selector}`);
+                }
+            }
+
+            return null;
         };
 
+        const titleEl = queryFirst(
+            this.htmlSelectors.title,
+            'a[href*="/jobs/view/"]'
+        );
+
+        const companyEl = queryFirst(
+            this.htmlSelectors.company,
+            'a[href*="/company/"][href*="/life/"]',
+            'a[href*="/company/"]'
+        );
+
+        const bodyEl = queryFirst(
+            this.htmlSelectors.body,
+            '[data-sdui-component*="aboutTheJob"]',
+            '[id^="JobDetails_AboutTheJob_"]'
+        );
+
+        const metadataParagraph = this.findJobMetadata(titleEl);
+
+        const {
+            location,
+            postedDate,
+            candidates
+        } = this.extractMetadata(metadataParagraph);
+
         const jobData = {
-            originWebsite: window.location.hostname, // current domain
-            company: getText(this.htmlSelectors.company, 'company'),
-            location: getText(this.htmlSelectors.location, 'location'),
-            title: getText(this.htmlSelectors.title, 'title'),
-            candidates: getText(this.htmlSelectors.candidates, 'candidates'),
-            body: getText(this.htmlSelectors.body, 'body'),
-            postedDate: getText(this.htmlSelectors.postedDate, 'postedDate')
+            originWebsite: window.location.hostname,
+            company: companyEl?.textContent?.trim() || '',
+            location: location,
+            title: titleEl?.textContent?.trim() || '',
+            candidates: candidates,
+            body:  bodyEl?.textContent
+                        ?.replace(/^About the job\s*/i, '')
+                        ?.trim() || '',
+            postedDate: postedDate
         };
 
         if (!jobData.title || !jobData.company) {
-            throw new Error('Non sono riuscito a recuperare i dati di questa job post');
+            throw new Error(
+                'Non sono riuscito a recuperare i dati di questa job post'
+            );
         }
 
         return jobData;
+    }
+
+    findJobMetadata(titleEl) {
+        if (!titleEl) {
+            return null;
+        }
+
+        let container = titleEl.parentElement;
+
+        for (let i = 0; i < 10 && container; i++) {
+            const paragraphs = Array.from(
+                container.querySelectorAll('p')
+            );
+
+            const metadataParagraph = paragraphs.find(p => {
+                const text = p.textContent?.trim() || '';
+
+                return (
+                    /\bago\b/i.test(text) ||
+                    /\btoday\b/i.test(text) ||
+                    /\byesterday\b/i.test(text) ||
+                    /\bclicked apply\b/i.test(text) ||
+                    /\bapplicant/i.test(text)
+                );
+            });
+
+            if (metadataParagraph) {
+                return metadataParagraph;
+            }
+
+            container = container.parentElement;
+        }
+
+        return null;
+    }
+
+    extractMetadata(metadataParagraph) {
+        if (!metadataParagraph) {
+            return {
+                location: '',
+                postedDate: '',
+                candidates: ''
+            };
+        }
+
+        const values = Array.from(
+            metadataParagraph.querySelectorAll(':scope > span')
+        )
+            .map(span => span.textContent?.trim())
+            .filter(value =>
+                value &&
+                value !== '·'
+            );
+
+        const postedDate = values.find(value =>
+            /\b(ago|today|yesterday)\b/i.test(value)
+        ) || '';
+
+        const candidates = values.find(value =>
+            /\b(applicant|applicants|clicked apply|people clicked apply)\b/i.test(value)
+        ) || '';
+
+        const location = values.find(value =>
+            value !== postedDate &&
+            value !== candidates
+        ) || '';
+
+        return {
+            location,
+            postedDate,
+            candidates
+        };
     }
 
     generateJobKey({ company, title, location }) {
@@ -173,21 +289,47 @@ class JobFinder {
         });
     }
 
+    getCurrentJobId() {
+        const jobLink = document.querySelector(
+            '[data-sdui-screen="com.linkedin.sdui.flagshipnav.jobs.SemanticJobDetails"] a[href*="/jobs/view/"]'
+        );
+        const jobId = jobLink?.href.match(/\/jobs\/view\/(\d+)/)?.[1];
+
+        return jobId || new URLSearchParams(window.location.search).get('currentJobId');
+    }
+
     applyResponseToJobCard({esito, message}) {
         const config = STYLE_CONFIG[esito] || STYLE_CONFIG.NEW;
 
-        const card = document.querySelector(this.htmlSelectors.containerCard);
+        const jobId = this.getCurrentJobId();
+        const resultCard = jobId
+            ? document.querySelector(`[componentkey="job-card-component-ref-${jobId}"]`)
+            : null;
+        const card = resultCard?.closest('[style*="background-color"]') ||
+            document.querySelector(this.htmlSelectors.containerCard);
+
         if (!card) {
             console.error("Contenitore principale non trovato");
             return;
         }
-        card.style.transition = "background-color 0.5s ease-in-out"; // imposta transizione per il background-color
+
+        card.style.transition = "background-color 0.5s ease-in-out";
         card.style.backgroundColor = config.bgColor;
 
-        const titleEl = document.querySelector(this.htmlSelectors.title);
-        const infoJob1El = document.querySelector(this.htmlSelectors.infoJob1);
-        const infoJob2El = document.querySelector(this.htmlSelectors.infoJob2);
-        const bodyEl = document.querySelector(this.htmlSelectors.body)
+        if (resultCard) {
+            resultCard.style.transition = "background-color 0.5s ease-in-out";
+            resultCard.style.backgroundColor = config.bgColor;
+        }
+
+        const jobRoot = document.querySelector(
+            '[data-sdui-screen="com.linkedin.sdui.flagshipnav.jobs.SemanticJobDetails"]'
+        ) || document;
+        const titleEl = jobRoot.querySelector(this.htmlSelectors.title) ||
+            jobRoot.querySelector('a[href*="/jobs/view/"]');
+        const infoJob1El = jobRoot.querySelector(this.htmlSelectors.infoJob1);
+        const infoJob2El = jobRoot.querySelector(this.htmlSelectors.infoJob2);
+        const bodyEl = jobRoot.querySelector(this.htmlSelectors.body) ||
+            jobRoot.querySelector('[id^="JobDetails_AboutTheJob_"]');
 
         if (titleEl) this.updateResultField(titleEl, `[${esito}: ${message}]`)
         if (infoJob1El) infoJob1El.style.opacity = config.opacity;

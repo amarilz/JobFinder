@@ -1,6 +1,6 @@
 const CONFIG = {
     logPrefix: '[FE-JOBFINDER]',
-    debounceDelay: 10,
+    debounceDelay: 300,
     apiEndpointNewJob: '/be-jobfinder/api/v1/job',
     apiEndpointGetConfig: '/be-jobfinder/api/v1/config'
 };
@@ -37,6 +37,7 @@ class JobFinder {
         this.isAnalyzing = false;
         this.debounceTimer = null;
         this.logPrefix = CONFIG.logPrefix;
+        this.lastObservedJobId = null;
 
         this.htmlSelectors = {};
         this.positiveKeywords = [];
@@ -72,6 +73,7 @@ class JobFinder {
         try {
             await this.loadConfiguration();
             await this.analyzeJob();
+            this.lastObservedJobId = this.getCurrentJobId();
             this.initObserver(); // start observer
             this.log('JobAnalyzer inizializzato con successo');
         } catch (error) {
@@ -94,9 +96,7 @@ class JobFinder {
     }
 
     async expandJobDescription() {
-        const jobRoot = document.querySelector(
-            '[data-sdui-screen="com.linkedin.sdui.flagshipnav.jobs.SemanticJobDetails"]'
-        );
+        const jobRoot = this.getJobRoot();
         const moreButton = jobRoot?.querySelector(
             '[id^="JobDetails_AboutTheJob_"] [data-testid="expandable-text-button"]'
         );
@@ -118,10 +118,10 @@ class JobFinder {
     }
 
     extractJobData() {
-        const jobRoot =
-            document.querySelector(
-                '[data-sdui-screen="com.linkedin.sdui.flagshipnav.jobs.SemanticJobDetails"]'
-            ) || document;
+        const jobRoot = this.getJobRoot();
+        if (!jobRoot) {
+            throw new Error('Dettaglio della job posting non ancora disponibile');
+        }
 
         const queryFirst = (...selectors) => {
             for (const selector of selectors.filter(Boolean)) {
@@ -176,9 +176,13 @@ class JobFinder {
             postedDate: postedDate
         };
 
-        if (!jobData.title || !jobData.company) {
+        const missingFields = Object.entries(jobData)
+            .filter(([, value]) => !value)
+            .map(([field]) => field);
+
+        if (missingFields.length > 0) {
             throw new Error(
-                'Non sono riuscito a recuperare i dati di questa job post'
+                `Dati job incompleti: ${missingFields.join(', ')}`
             );
         }
 
@@ -271,9 +275,14 @@ class JobFinder {
         let jobData;
 
         try {
+            if (!this.getJobRoot()) {
+                return;
+            }
+
             await this.expandJobDescription();
             jobData = this.extractJobData();
             this.setLogContext(jobData.company, jobData.title);
+            const analyzedJobId = this.getCurrentJobId();
             const jobKey = this.generateJobKey(jobData);
 
             if (jobKey === this.lastJobKey) {
@@ -285,10 +294,18 @@ class JobFinder {
             this.log("Analizzo offerta:", jobData);
 
             const response = await this.makePostRequest(CONFIG.apiEndpointNewJob, jobData);
+            if (analyzedJobId && analyzedJobId !== this.getCurrentJobId()) {
+                this.log('Risposta ignorata: il job visualizzato è cambiato durante l\'analisi');
+                return;
+            }
             this.log("Risposta:", response)
-            this.applyResponseToJobCard(response);
+            this.applyResponseToJobCard(response, analyzedJobId);
         } catch (error) {
-            this.error('Errore nella richiesta POST:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+            if (error.message?.startsWith('Dati job incompleti:')) {
+                this.log('Job ancora in caricamento, nuova analisi al completamento del pannello');
+            } else {
+                this.error('Errore nella richiesta POST:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+            }
             this.lastJobKey = null;
         } finally {
             this.isAnalyzing = false;
@@ -337,18 +354,22 @@ class JobFinder {
     }
 
     getCurrentJobId() {
-        const jobLink = document.querySelector(
-            '[data-sdui-screen="com.linkedin.sdui.flagshipnav.jobs.SemanticJobDetails"] a[href*="/jobs/view/"]'
-        );
+        const jobLink = this.getJobRoot()?.querySelector('a[href*="/jobs/view/"]');
         const jobId = jobLink?.href.match(/\/jobs\/view\/(\d+)/)?.[1];
 
         return jobId || new URLSearchParams(window.location.search).get('currentJobId');
     }
 
-    applyResponseToJobCard({ esito, message }) {
+    getJobRoot() {
+        return document.querySelector(
+            '[data-sdui-screen="com.linkedin.sdui.flagshipnav.jobs.SemanticJobDetails"]'
+        );
+    }
+
+    applyResponseToJobCard({ esito, message }, analyzedJobId) {
         const config = STYLE_CONFIG[esito] || STYLE_CONFIG.NEW;
 
-        const jobId = this.getCurrentJobId();
+        const jobId = analyzedJobId || this.getCurrentJobId();
         const resultCard = jobId
             ? document.querySelector(`[componentkey="job-card-component-ref-${jobId}"]`)
             : null;
@@ -368,9 +389,11 @@ class JobFinder {
             resultCard.style.backgroundColor = config.bgColor;
         }
 
-        const jobRoot = document.querySelector(
-            '[data-sdui-screen="com.linkedin.sdui.flagshipnav.jobs.SemanticJobDetails"]'
-        ) || document;
+        const jobRoot = this.getJobRoot();
+        if (!jobRoot) {
+            this.error('Dettaglio della job posting non trovato');
+            return;
+        }
         const titleEl = jobRoot.querySelector(this.htmlSelectors.title) ||
             jobRoot.querySelector('a[href*="/jobs/view/"]');
         const infoJob1El = jobRoot.querySelector(this.htmlSelectors.infoJob1);
@@ -430,17 +453,26 @@ class JobFinder {
         const debouncedAnalyze = this.debounce(() => this.analyzeJob(), CONFIG.debounceDelay);
 
         const observer = new MutationObserver((mutations) => {
-            // controlla se ci sono state modifiche rilevanti
-            const hasRelevantChanges = mutations.some(mutation =>
+            if (!this.getJobRoot()) {
+                return;
+            }
+
+            const jobId = this.getCurrentJobId();
+            const hasAddedElements = mutations.some(mutation =>
                 mutation.type === 'childList' &&
-                mutation.addedNodes.length > 0 &&
                 Array.from(mutation.addedNodes).some(node =>
                     node.nodeType === Node.ELEMENT_NODE
                 )
             );
 
-            if (hasRelevantChanges)
-                debouncedAnalyze(); // aspetta 500ms di "silenzio"
+            if (!hasAddedElements || !jobId) {
+                return;
+            }
+
+            if (jobId !== this.lastObservedJobId || !this.lastJobKey) {
+                this.lastObservedJobId = jobId;
+                debouncedAnalyze();
+            }
         });
 
         observer.observe(document.body, {

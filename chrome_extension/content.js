@@ -1,6 +1,7 @@
 const CONFIG = {
     logPrefix: '[FE-JOBFINDER]',
     debounceDelay: 300,
+    showDismissedJobsStorageKey: 'jobfinder.showDismissedJobs',
     apiEndpointNewJob: '/be-jobfinder/api/v1/job',
     apiEndpointGetConfig: '/be-jobfinder/api/v1/config'
 };
@@ -38,6 +39,7 @@ class JobFinder {
         this.debounceTimer = null;
         this.logPrefix = CONFIG.logPrefix;
         this.lastObservedJobId = null;
+        this.showDismissedJobs = localStorage.getItem(CONFIG.showDismissedJobsStorageKey) === 'true';
 
         this.htmlSelectors = {};
         this.positiveKeywords = [];
@@ -72,6 +74,7 @@ class JobFinder {
         this.log('Inizializzazione JobFinder...');
         try {
             await this.loadConfiguration();
+            this.initDismissedJobsToggle();
             await this.analyzeJob();
             this.lastObservedJobId = this.getCurrentJobId();
             this.initObserver(); // start observer
@@ -93,6 +96,72 @@ class JobFinder {
         this.negativeKeywords = configData.negativeKeyword || [];
 
         this.log("Configurazione caricata:", configData);
+    }
+
+    initDismissedJobsToggle() {
+        if (document.getElementById('jobfinder-dismissed-toggle')) {
+            this.applyDismissedJobsFilter();
+            return;
+        }
+
+        const container = document.createElement('label');
+        container.id = 'jobfinder-dismissed-toggle';
+        container.style.cssText = [
+            'position: fixed',
+            'right: 16px',
+            'bottom: 16px',
+            'z-index: 2147483647',
+            'display: flex',
+            'align-items: center',
+            'gap: 8px',
+            'padding: 8px 10px',
+            'border: 1px solid #d0d0d0',
+            'border-radius: 6px',
+            'background: #ffffff',
+            'box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15)',
+            'font: 12px Arial, sans-serif',
+            'color: #222',
+            'cursor: pointer'
+        ].join(';');
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = this.showDismissedJobs;
+        checkbox.addEventListener('change', () => {
+            this.showDismissedJobs = checkbox.checked;
+            localStorage.setItem(
+                CONFIG.showDismissedJobsStorageKey,
+                String(this.showDismissedJobs)
+            );
+            this.applyDismissedJobsFilter();
+            this.log(`Card rimosse ${this.showDismissedJobs ? 'visibili' : 'nascoste'}`);
+        });
+
+        const text = document.createElement('span');
+        text.textContent = 'Mostra card rimosse';
+
+        container.append(checkbox, text);
+        document.body.appendChild(container);
+        this.applyDismissedJobsFilter();
+    }
+
+    applyDismissedJobsFilter() {
+        const jobCards = document.querySelectorAll(
+            '[componentkey^="job-card-component-ref-"]'
+        );
+
+        jobCards.forEach(jobCard => {
+            const dismissed = jobCard.querySelector(
+                'button[aria-label*="job is dismissed, undo" i]'
+            );
+            const cardContainer = jobCard.closest('div[style*="background-color"]');
+
+            if (cardContainer) {
+                cardContainer.style.display = dismissed && !this.showDismissedJobs
+                    ? 'none'
+                    : '';
+            }
+        });
     }
 
     async expandJobDescription() {
@@ -454,6 +523,8 @@ class JobFinder {
         const debouncedAnalyze = this.debounce(() => this.analyzeJob(), CONFIG.debounceDelay);
 
         const observer = new MutationObserver((mutations) => {
+            this.applyDismissedJobsFilter();
+
             if (!this.getJobRoot()) {
                 return;
             }

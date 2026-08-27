@@ -130,7 +130,8 @@ components:
         originWebsite:
           type: string
           minLength: 1
-          example: "linkedin.com"
+          maxLength: 2048
+          example: "https://www.linkedin.com/jobs/view/4449236124/"
         company:
           type: string
           minLength: 1
@@ -175,23 +176,13 @@ components:
       type: object
       required:
         - originWebsite
-        - company
-        - location
-        - title
         - applied
       properties:
         originWebsite:
           type: string
           minLength: 1
-        company:
-          type: string
-          minLength: 1
-        location:
-          type: string
-          minLength: 1
-        title:
-          type: string
-          minLength: 1
+          maxLength: 2048
+          example: "https://www.linkedin.com/jobs/view/4449236124/"
         applied:
           type: boolean
 

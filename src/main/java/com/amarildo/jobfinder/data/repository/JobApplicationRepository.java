@@ -9,8 +9,5 @@ import java.util.Optional;
 @Repository
 public interface JobApplicationRepository extends JpaRepository<JobApplication, Long> {
 
-    Optional<JobApplication> findByOriginWebsiteAndCompanyAndLocationAndTitle(String originWebsite,
-                                                                              String company,
-                                                                              String location,
-                                                                              String title);
+    Optional<JobApplication> findFirstByJobPostingOriginWebsiteOrderByIdDesc(String originWebsite);
 }

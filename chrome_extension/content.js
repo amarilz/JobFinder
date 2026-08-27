@@ -236,7 +236,7 @@ class JobFinder {
         } = this.extractMetadata(metadataParagraph);
 
         const jobData = {
-            originWebsite: window.location.hostname,
+            originWebsite: this.extractJobPostingUrl(titleEl),
             company: companyEl?.textContent?.trim() || '',
             location: location,
             title: titleEl?.textContent?.trim() || '',
@@ -258,6 +258,17 @@ class JobFinder {
         }
 
         return jobData;
+    }
+
+    extractJobPostingUrl(titleEl) {
+        const href = titleEl?.href || titleEl?.closest('a[href*="/jobs/view/"]')?.href;
+        const jobId = href?.match(/\/jobs\/view\/(\d+)/)?.[1];
+
+        if (!jobId) {
+            throw new Error('URL della job posting non disponibile');
+        }
+
+        return `${window.location.origin}/jobs/view/${jobId}/`;
     }
 
     findJobMetadata(titleEl) {
@@ -437,9 +448,6 @@ class JobFinder {
                 },
                 body: {
                     originWebsite: jobData.originWebsite,
-                    company: jobData.company,
-                    location: jobData.location,
-                    title: jobData.title,
                     applied
                 }
             }, (response) => {
@@ -502,7 +510,11 @@ class JobFinder {
 
         if (titleEl) {
             this.updateResultField(titleEl, `[${esito}: ${message}]`, config.bgColor);
-            this.updateApplicationToggle(titleEl, jobData || this.currentJobData, applied === true);
+            if (esito === 'TOO_MANY_CANDIDATES') {
+                document.getElementById('job-application-toggle')?.remove();
+            } else {
+                this.updateApplicationToggle(titleEl, jobData || this.currentJobData, applied === true);
+            }
         }
         if (infoJob1El) infoJob1El.style.opacity = config.opacity;
         if (infoJob2El) infoJob2El.style.opacity = config.opacity;
@@ -528,13 +540,11 @@ class JobFinder {
     }
 
     updateApplicationToggle(titleEl, jobData, applied) {
-        if (!jobData || document.getElementById('job-application-toggle')) {
-            const existingToggle = document.getElementById('job-application-toggle');
-            if (existingToggle) {
-                existingToggle.querySelector('input').checked = applied;
-            }
+        if (!jobData) {
             return;
         }
+
+        document.getElementById('job-application-toggle')?.remove();
 
         const container = document.createElement('label');
         container.id = 'job-application-toggle';

@@ -35,7 +35,7 @@ public class JobPosting {
     @Column(name = "ID")
     private Long id;
 
-    @Column(name = "ORIGIN_WEBSITE", length = 50, nullable = false)
+    @Column(name = "ORIGIN_WEBSITE", length = 2048, nullable = false)
     private String originWebsite;
 
     @Column(name = "COMPANY", length = 100, nullable = false)

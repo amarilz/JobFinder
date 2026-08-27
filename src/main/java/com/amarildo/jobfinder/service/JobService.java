@@ -23,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
@@ -106,8 +107,10 @@ public class JobService {
                     language,
                     String.join(", ", preferredLanguages));
             log.info(message);
+            JobPosting jobPosting = jobPostingMapper.toJobPosting(jobPostingDto, language);
+            jobPostingRepository.save(jobPosting);
             wrongLanguageCounter.increment();
-            return new JobPostingDtoResponse(UNSUITABLE_LANGUAGE, message, false);
+            return new JobPostingDtoResponse(UNSUITABLE_LANGUAGE, message, getApplicationStatus(jobPostingDto));
         }
 
         List<JobPosting> byPostedDateAsc = jobPostingRepository
@@ -134,48 +137,43 @@ public class JobService {
         JobPosting jobPosting = jobPostingMapper.toJobPosting(jobPostingDto, language);
         jobPostingRepository.save(jobPosting);
         newJobCounter.increment();
-        return new JobPostingDtoResponse(NEW, "", false);
+        return new JobPostingDtoResponse(NEW, "", getApplicationStatus(jobPostingDto));
     }
 
     public JobApplicationDtoResponse updateJobApplication(JobApplicationDto applicationDto) throws BadRequestException {
         if (applicationDto == null || applicationDto.getOriginWebsite() == null
                 || applicationDto.getOriginWebsite().isBlank()
-                || applicationDto.getCompany() == null || applicationDto.getCompany().isBlank()
-                || applicationDto.getLocation() == null || applicationDto.getLocation().isBlank()
-                || applicationDto.getTitle() == null || applicationDto.getTitle().isBlank()
                 || applicationDto.getApplied() == null) {
             throw new BadRequestException("Incomplete job application data");
         }
 
-        var existingApplication = jobApplicationRepository.findByOriginWebsiteAndCompanyAndLocationAndTitle(
-                applicationDto.getOriginWebsite(),
-                applicationDto.getCompany(),
-                applicationDto.getLocation(),
-                applicationDto.getTitle());
+        var existingApplication = jobApplicationRepository
+                .findFirstByJobPostingOriginWebsiteOrderByIdDesc(applicationDto.getOriginWebsite());
 
         if (!applicationDto.getApplied()) {
             existingApplication.ifPresent(jobApplicationRepository::delete);
             return new JobApplicationDtoResponse(false);
         }
 
-        JobApplication jobApplication = existingApplication.orElseGet(JobApplication::new);
-        jobApplication.setOriginWebsite(applicationDto.getOriginWebsite());
-        jobApplication.setCompany(applicationDto.getCompany());
-        jobApplication.setLocation(applicationDto.getLocation());
-        jobApplication.setTitle(applicationDto.getTitle());
-        jobApplication.setApplied(true);
+        if (existingApplication.isPresent()) {
+            return new JobApplicationDtoResponse(true);
+        }
+
+        JobPosting jobPosting = jobPostingRepository.findFirstByOriginWebsiteOrderByIdDesc(
+                        applicationDto.getOriginWebsite())
+                .orElseThrow(() -> new BadRequestException("Job posting not found"));
+
+        JobApplication jobApplication = new JobApplication();
+        jobApplication.setJobPosting(jobPosting);
+        jobApplication.setApplicationDate(LocalDate.now());
         jobApplicationRepository.save(jobApplication);
         return new JobApplicationDtoResponse(true);
     }
 
     private boolean getApplicationStatus(JobPostingDto jobPostingDto) {
-        return jobApplicationRepository.findByOriginWebsiteAndCompanyAndLocationAndTitle(
-                        jobPostingDto.getOriginWebsite(),
-                        jobPostingDto.getCompany(),
-                        jobPostingDto.getLocation(),
-                        jobPostingDto.getTitle())
-                .map(JobApplication::isApplied)
-                .orElse(false);
+        return jobApplicationRepository
+                .findFirstByJobPostingOriginWebsiteOrderByIdDesc(jobPostingDto.getOriginWebsite())
+                .isPresent();
     }
 
     private void validateInput(JobPostingDto jobPostingDto) throws BadRequestException {

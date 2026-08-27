@@ -47,8 +47,7 @@ public class JobController implements JobApi {
     public ResponseEntity<JobApplicationDtoResponse> updateJobApplication(
             String correlationId, JobApplicationDto jobApplicationDto) throws Exception {
         loggingService.addLoggingInfo(correlationId, "updateJobApplication");
-        log.info("Application status update requested for {} - {}", jobApplicationDto.getCompany(),
-                jobApplicationDto.getTitle());
+        log.info("Application status update requested for {}", jobApplicationDto.getOriginWebsite());
 
         return ResponseEntity.ok(jobService.updateJobApplication(jobApplicationDto));
     }

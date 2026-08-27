@@ -11,10 +11,7 @@ import java.time.LocalDateTime;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-@Mapper(
-        componentModel = "spring",
-        imports = {LocalDate.class}
-)
+@Mapper(componentModel = "spring", imports = { LocalDate.class })
 public interface JobPostingMapper {
 
     @Mapping(target = "id", ignore = true)
@@ -29,7 +26,8 @@ public interface JobPostingMapper {
 
     static LocalDate parseRelativeDateToLocalDate(@NotNull String input) {
         // Espressione regolare per catturare "<numero> <unità>"
-        Pattern pattern = Pattern.compile("(\\d+)\\s+(day|days|week|weeks|month|months|year|years|hour|hours|minute|minutes)");
+        Pattern pattern = Pattern
+                .compile("(\\d+)\\s+(day|days|week|weeks|month|months|year|years|hour|hours|minute|minutes)");
         Matcher matcher = pattern.matcher(input.toLowerCase());
 
         if (!matcher.find()) {

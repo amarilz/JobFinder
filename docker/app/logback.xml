@@ -4,7 +4,7 @@
 
     <property scope="context" name="applicazione" value="JOBFINDER"/>
     <property scope="context" name="componente" value="BE-JOBFINDER"/>
-    <property name="LOG_ROOT" value="${log.root:-./logs}"/>
+    <property name="LOG_ROOT" value="/app/logs"/>
 
     <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>

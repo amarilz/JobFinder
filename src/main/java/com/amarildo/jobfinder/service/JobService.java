@@ -1,14 +1,24 @@
 package com.amarildo.jobfinder.service;
 
+import com.amarildo.jobfinder.data.entity.JobApplication;
+import com.amarildo.jobfinder.data.entity.JobApplicationStatus;
 import com.amarildo.jobfinder.data.entity.JobPosting;
 import com.amarildo.jobfinder.data.mapping.JobPostingMapper;
+import com.amarildo.jobfinder.data.repository.JobApplicationRepository;
 import com.amarildo.jobfinder.data.repository.JobPostingRepository;
 import com.amarildo.jobfinder.error.BadRequestException;
+import com.amarildo.openapi.model.JobApplicationDto;
+import com.amarildo.openapi.model.JobApplicationDtoResponse;
+import com.amarildo.openapi.model.JobApplicationListItemDto;
+import com.amarildo.openapi.model.JobApplicationStatusDto;
+import com.amarildo.openapi.model.UpdateJobApplicationStatusDto;
 import com.amarildo.openapi.model.JobPostingDto;
 import com.amarildo.openapi.model.JobPostingDtoResponse;
 import com.github.pemistahl.lingua.api.Language;
 import com.github.pemistahl.lingua.api.LanguageDetector;
 import com.github.pemistahl.lingua.api.LanguageDetectorBuilder;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.jetbrains.annotations.NotNull;
@@ -17,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
@@ -33,7 +44,9 @@ import static com.amarildo.openapi.model.Esito.UNSUITABLE_LANGUAGE;
 @Slf4j(topic = TRACE)
 public class JobService {
 
+    private final MeterRegistry meterRegistry;
     private final JobPostingRepository jobPostingRepository;
+    private final JobApplicationRepository jobApplicationRepository;
     private final JobPostingMapper jobPostingMapper;
 
     @Value(value = "${job.posting.max.candidates}")
@@ -46,13 +59,26 @@ public class JobService {
     @Value("#{'${job.posting.language.preferred}'.split(',')}")
     private List<String> preferredLanguages;
 
+    private final Counter newJobCounter;
+    private final Counter wrongLanguageCounter;
+    private final Counter oldJobCounter;
+    private final Counter tooManyCandidatesCounter;
+
     @Autowired
     public JobService(
+            MeterRegistry meterRegistry,
             JobPostingRepository jobPostingRepository,
-            JobPostingMapper jobPostingMapper
-    ) {
+            JobApplicationRepository jobApplicationRepository,
+            JobPostingMapper jobPostingMapper) {
+        this.meterRegistry = meterRegistry;
         this.jobPostingRepository = jobPostingRepository;
+        this.jobApplicationRepository = jobApplicationRepository;
         this.jobPostingMapper = jobPostingMapper;
+
+        newJobCounter = meterRegistry.counter("new_job");
+        wrongLanguageCounter = meterRegistry.counter("wrong_language");
+        oldJobCounter = meterRegistry.counter("old_job");
+        tooManyCandidatesCounter = meterRegistry.counter("too_many_candidates");
     }
 
     @PostConstruct
@@ -68,9 +94,11 @@ public class JobService {
 
         int candidates = calculateCandidate(jobPostingDto.getCandidates());
         if (candidates > maxCandidates) {
-            String message = String.format("Candidate count %d exceeds the maximum allowed limit of %d", candidates, maxCandidates);
+            String message = String.format("Candidate count %d exceeds the maximum allowed limit of %d", candidates,
+                    maxCandidates);
             log.info(message);
-            return new JobPostingDtoResponse(TOO_MANY_CANDIDATES, message);
+            tooManyCandidatesCounter.increment();
+            return new JobPostingDtoResponse(TOO_MANY_CANDIDATES, message, false);
         }
 
         String bodyText = getTextFromHtmlBody(jobPostingDto.getBody());
@@ -83,15 +111,19 @@ public class JobService {
                     language,
                     String.join(", ", preferredLanguages));
             log.info(message);
-            return new JobPostingDtoResponse(UNSUITABLE_LANGUAGE, message);
+            JobPosting jobPosting = jobPostingMapper.toJobPosting(jobPostingDto, language);
+            jobPostingRepository.save(jobPosting);
+            wrongLanguageCounter.increment();
+            return new JobPostingDtoResponse(UNSUITABLE_LANGUAGE, message, getApplicationStatus(jobPostingDto));
         }
 
-        List<JobPosting> byPostedDateAsc = jobPostingRepository.findByCompanyAndLocationAndTitleAndBodyAndLanguageOrderByPostedDateAsc(
-                jobPostingDto.getCompany(),
-                jobPostingDto.getLocation(),
-                jobPostingDto.getTitle(),
-                jobPostingDto.getBody(),
-                language);
+        List<JobPosting> byPostedDateAsc = jobPostingRepository
+                .findByCompanyAndLocationAndTitleAndBodyAndLanguageOrderByPostedDateAsc(
+                        jobPostingDto.getCompany(),
+                        jobPostingDto.getLocation(),
+                        jobPostingDto.getTitle(),
+                        jobPostingDto.getBody(),
+                        language);
         if (!byPostedDateAsc.isEmpty()) {
             int visteCount = byPostedDateAsc.size();
 
@@ -100,13 +132,85 @@ public class JobService {
                     : String.format("Job posting vista in passato %s volte. Ultima volta nella data %s", visteCount, byPostedDateAsc.getLast().getPostedDate());
             log.info(msg);
 
-            return new JobPostingDtoResponse(ALREADY_SEEN, msg);
+            JobPosting jobPosting = jobPostingMapper.toJobPosting(jobPostingDto, language);
+            jobPostingRepository.save(jobPosting);
+            oldJobCounter.increment();
+            return new JobPostingDtoResponse(ALREADY_SEEN, msg, getApplicationStatus(jobPostingDto));
         }
 
         JobPosting jobPosting = jobPostingMapper.toJobPosting(jobPostingDto, language);
         jobPostingRepository.save(jobPosting);
+        newJobCounter.increment();
+        return new JobPostingDtoResponse(NEW, "", getApplicationStatus(jobPostingDto));
+    }
 
-        return new JobPostingDtoResponse(NEW, "");
+    public JobApplicationDtoResponse updateJobApplication(JobApplicationDto applicationDto) throws BadRequestException {
+        if (applicationDto == null || applicationDto.getOriginWebsite() == null
+                || applicationDto.getOriginWebsite().isBlank()
+                || applicationDto.getApplied() == null) {
+            throw new BadRequestException("Incomplete job application data");
+        }
+
+        var existingApplication = jobApplicationRepository
+                .findFirstByJobPostingOriginWebsiteOrderByIdDesc(applicationDto.getOriginWebsite());
+
+        if (!applicationDto.getApplied()) {
+            existingApplication.ifPresent(jobApplicationRepository::delete);
+            return new JobApplicationDtoResponse(false);
+        }
+
+        if (existingApplication.isPresent()) {
+            return new JobApplicationDtoResponse(true);
+        }
+
+        JobPosting jobPosting = jobPostingRepository.findFirstByOriginWebsiteOrderByIdDesc(
+                        applicationDto.getOriginWebsite())
+                .orElseThrow(() -> new BadRequestException("Job posting not found"));
+
+        JobApplication jobApplication = new JobApplication();
+        jobApplication.setJobPosting(jobPosting);
+        jobApplication.setApplicationDate(LocalDate.now());
+        jobApplication.setStatus(JobApplicationStatus.DROP_CV);
+        jobApplicationRepository.save(jobApplication);
+        return new JobApplicationDtoResponse(true);
+    }
+
+    public List<JobApplicationListItemDto> getJobApplications() {
+        return jobApplicationRepository.findAllByOrderByApplicationDateDescIdDesc().stream()
+                .map(this::toListItemDto)
+                .toList();
+    }
+
+    public JobApplicationListItemDto updateJobApplicationStatus(
+            Long applicationId,
+            UpdateJobApplicationStatusDto statusDto) throws BadRequestException {
+        if (statusDto == null || statusDto.getStatus() == null) {
+            throw new BadRequestException("Application status cannot be null");
+        }
+
+        JobApplication application = jobApplicationRepository.findById(applicationId)
+                .orElseThrow(() -> new BadRequestException("Job application not found"));
+        application.setStatus(JobApplicationStatus.valueOf(statusDto.getStatus().getValue()));
+        return toListItemDto(jobApplicationRepository.save(application));
+    }
+
+    private JobApplicationListItemDto toListItemDto(JobApplication application) {
+        JobPosting posting = application.getJobPosting();
+        return new JobApplicationListItemDto(
+                application.getId(),
+                posting.getOriginWebsite(),
+                posting.getCompany(),
+                posting.getLocation(),
+                posting.getTitle(),
+                posting.getPostedDate(),
+                application.getApplicationDate(),
+                JobApplicationStatusDto.fromValue(application.getStatus().name()));
+    }
+
+    private boolean getApplicationStatus(JobPostingDto jobPostingDto) {
+        return jobApplicationRepository
+                .findFirstByJobPostingOriginWebsiteOrderByIdDesc(jobPostingDto.getOriginWebsite())
+                .isPresent();
     }
 
     private void validateInput(JobPostingDto jobPostingDto) throws BadRequestException {

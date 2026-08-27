@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
@@ -19,4 +20,6 @@ public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
                 AND j.language = ?5
             ORDER BY j.postedDate""")
     List<JobPosting> findByCompanyAndLocationAndTitleAndBodyAndLanguageOrderByPostedDateAsc(String company, String location, String title, String body, String language);
+
+    Optional<JobPosting> findFirstByOriginWebsiteOrderByIdDesc(String originWebsite);
 }

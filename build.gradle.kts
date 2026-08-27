@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.amarildo"
-version = "1.0.0"
+version = "1.0.1"
 
 java {
     toolchain {
@@ -59,6 +59,14 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("io.swagger.core.v3:swagger-annotations:2.2.34")
 
+    // database
+    runtimeOnly("com.h2database:h2")
+    runtimeOnly("org.postgresql:postgresql")
+
+    // per prometheus
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
+    runtimeOnly("io.micrometer:micrometer-registry-prometheus")
+
     // reduce boilerplate code
     compileOnly("org.projectlombok:lombok")
     compileOnly("org.mapstruct:mapstruct:1.6.3")
@@ -72,8 +80,6 @@ dependencies {
 
     // for language detection
     implementation("com.github.pemistahl:lingua:1.2.2")
-
-    runtimeOnly("com.h2database:h2")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

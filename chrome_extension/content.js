@@ -401,7 +401,7 @@ class JobFinder {
         const bodyEl = jobRoot.querySelector(this.htmlSelectors.body) ||
             jobRoot.querySelector('[id^="JobDetails_AboutTheJob_"]');
 
-        if (titleEl) this.updateResultField(titleEl, `[${esito}: ${message}]`)
+        if (titleEl) this.updateResultField(titleEl, `[${esito}: ${message}]`, config.bgColor)
         if (infoJob1El) infoJob1El.style.opacity = config.opacity;
         if (infoJob2El) infoJob2El.style.opacity = config.opacity;
         if (bodyEl) bodyEl.style.opacity = config.opacity;
@@ -411,7 +411,7 @@ class JobFinder {
         }
     }
 
-    updateResultField(titleEl, text) {
+    updateResultField(titleEl, text, backgroundColor) {
         const id = 'job-extra-field';
         let field = document.getElementById(id);
 
@@ -422,6 +422,7 @@ class JobFinder {
             titleEl.parentElement?.appendChild(field);
         }
         field.textContent = text;
+        field.style.backgroundColor = backgroundColor;
     }
 
     debounce(func, delay) {

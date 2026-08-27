@@ -3,6 +3,7 @@ const CONFIG = {
     debounceDelay: 300,
     showDismissedJobsStorageKey: 'jobfinder.showDismissedJobs',
     apiEndpointNewJob: '/be-jobfinder/api/v1/job',
+    apiEndpointJobApplication: '/be-jobfinder/api/v1/job/application',
     apiEndpointGetConfig: '/be-jobfinder/api/v1/config'
 };
 
@@ -39,6 +40,7 @@ class JobFinder {
         this.debounceTimer = null;
         this.logPrefix = CONFIG.logPrefix;
         this.lastObservedJobId = null;
+        this.currentJobData = null;
         this.showDismissedJobs = localStorage.getItem(CONFIG.showDismissedJobsStorageKey) === 'true';
 
         this.htmlSelectors = {};
@@ -360,6 +362,7 @@ class JobFinder {
             }
 
             this.lastJobKey = jobKey;
+            this.currentJobData = jobData;
             this.log("Analizzo offerta:", jobData);
 
             const response = await this.makePostRequest(CONFIG.apiEndpointNewJob, jobData);
@@ -368,7 +371,7 @@ class JobFinder {
                 return;
             }
             this.log("Risposta:", response)
-            this.applyResponseToJobCard(response, analyzedJobId);
+            this.applyResponseToJobCard(response, analyzedJobId, jobData);
         } catch (error) {
             if (error.message?.startsWith('Dati job incompleti:')) {
                 this.log('Job ancora in caricamento, nuova analisi al completamento del pannello');
@@ -422,6 +425,33 @@ class JobFinder {
         });
     }
 
+    makeApplicationRequest(jobData, applied) {
+        const correlationId = crypto.randomUUID();
+        return new Promise((resolve, reject) => {
+            chrome.runtime.sendMessage({
+                action: 'makeRequest',
+                endpoint: CONFIG.apiEndpointJobApplication,
+                method: 'PATCH',
+                headers: {
+                    'correlationId': correlationId
+                },
+                body: {
+                    originWebsite: jobData.originWebsite,
+                    company: jobData.company,
+                    location: jobData.location,
+                    title: jobData.title,
+                    applied
+                }
+            }, (response) => {
+                if (response.success) {
+                    resolve(response.data);
+                } else {
+                    reject(response);
+                }
+            });
+        });
+    }
+
     getCurrentJobId() {
         const jobLink = this.getJobRoot()?.querySelector('a[href*="/jobs/view/"]');
         const jobId = jobLink?.href.match(/\/jobs\/view\/(\d+)/)?.[1];
@@ -435,7 +465,7 @@ class JobFinder {
         );
     }
 
-    applyResponseToJobCard({ esito, message }, analyzedJobId) {
+    applyResponseToJobCard({ esito, message, applied }, analyzedJobId, jobData) {
         const config = STYLE_CONFIG[esito] || STYLE_CONFIG.NEW;
 
         const jobId = analyzedJobId || this.getCurrentJobId();
@@ -470,7 +500,10 @@ class JobFinder {
         const bodyEl = jobRoot.querySelector(this.htmlSelectors.body) ||
             jobRoot.querySelector('[id^="JobDetails_AboutTheJob_"]');
 
-        if (titleEl) this.updateResultField(titleEl, `[${esito}: ${message}]`, config.bgColor)
+        if (titleEl) {
+            this.updateResultField(titleEl, `[${esito}: ${message}]`, config.bgColor);
+            this.updateApplicationToggle(titleEl, jobData || this.currentJobData, applied === true);
+        }
         if (infoJob1El) infoJob1El.style.opacity = config.opacity;
         if (infoJob2El) infoJob2El.style.opacity = config.opacity;
         if (bodyEl) bodyEl.style.opacity = config.opacity;
@@ -492,6 +525,47 @@ class JobFinder {
         }
         field.textContent = text;
         field.style.backgroundColor = backgroundColor;
+    }
+
+    updateApplicationToggle(titleEl, jobData, applied) {
+        if (!jobData || document.getElementById('job-application-toggle')) {
+            const existingToggle = document.getElementById('job-application-toggle');
+            if (existingToggle) {
+                existingToggle.querySelector('input').checked = applied;
+            }
+            return;
+        }
+
+        const container = document.createElement('label');
+        container.id = 'job-application-toggle';
+        container.style.cssText = 'margin-left: 8px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer;';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = applied;
+        checkbox.title = 'Candidato per questa posizione';
+        checkbox.addEventListener('change', async () => {
+            const requestedState = checkbox.checked;
+            checkbox.disabled = true;
+
+            try {
+                const response = await this.makeApplicationRequest(jobData, requestedState);
+                checkbox.checked = response.applied === true;
+                this.log(`Stato candidatura aggiornato: ${checkbox.checked ? 'candidato' : 'non candidato'}`);
+            } catch (error) {
+                checkbox.checked = !requestedState;
+                this.error('Impossibile aggiornare lo stato candidatura:', error);
+            } finally {
+                checkbox.disabled = false;
+            }
+        });
+
+        const text = document.createElement('span');
+        text.textContent = 'Candidato';
+        text.style.fontSize = '12px';
+
+        container.append(checkbox, text);
+        titleEl.parentElement?.appendChild(container);
     }
 
     debounce(func, delay) {

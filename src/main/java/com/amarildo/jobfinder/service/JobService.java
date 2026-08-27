@@ -1,9 +1,13 @@
 package com.amarildo.jobfinder.service;
 
+import com.amarildo.jobfinder.data.entity.JobApplication;
 import com.amarildo.jobfinder.data.entity.JobPosting;
 import com.amarildo.jobfinder.data.mapping.JobPostingMapper;
+import com.amarildo.jobfinder.data.repository.JobApplicationRepository;
 import com.amarildo.jobfinder.data.repository.JobPostingRepository;
 import com.amarildo.jobfinder.error.BadRequestException;
+import com.amarildo.openapi.model.JobApplicationDto;
+import com.amarildo.openapi.model.JobApplicationDtoResponse;
 import com.amarildo.openapi.model.JobPostingDto;
 import com.amarildo.openapi.model.JobPostingDtoResponse;
 import com.github.pemistahl.lingua.api.Language;
@@ -37,6 +41,7 @@ public class JobService {
 
     private final MeterRegistry meterRegistry;
     private final JobPostingRepository jobPostingRepository;
+    private final JobApplicationRepository jobApplicationRepository;
     private final JobPostingMapper jobPostingMapper;
 
     @Value(value = "${job.posting.max.candidates}")
@@ -58,10 +63,11 @@ public class JobService {
     public JobService(
             MeterRegistry meterRegistry,
             JobPostingRepository jobPostingRepository,
-            JobPostingMapper jobPostingMapper
-    ) {
+            JobApplicationRepository jobApplicationRepository,
+            JobPostingMapper jobPostingMapper) {
         this.meterRegistry = meterRegistry;
         this.jobPostingRepository = jobPostingRepository;
+        this.jobApplicationRepository = jobApplicationRepository;
         this.jobPostingMapper = jobPostingMapper;
 
         newJobCounter = meterRegistry.counter("new_job");
@@ -83,10 +89,11 @@ public class JobService {
 
         int candidates = calculateCandidate(jobPostingDto.getCandidates());
         if (candidates > maxCandidates) {
-            String message = String.format("Candidate count %d exceeds the maximum allowed limit of %d", candidates, maxCandidates);
+            String message = String.format("Candidate count %d exceeds the maximum allowed limit of %d", candidates,
+                    maxCandidates);
             log.info(message);
             tooManyCandidatesCounter.increment();
-            return new JobPostingDtoResponse(TOO_MANY_CANDIDATES, message);
+            return new JobPostingDtoResponse(TOO_MANY_CANDIDATES, message, false);
         }
 
         String bodyText = getTextFromHtmlBody(jobPostingDto.getBody());
@@ -100,15 +107,16 @@ public class JobService {
                     String.join(", ", preferredLanguages));
             log.info(message);
             wrongLanguageCounter.increment();
-            return new JobPostingDtoResponse(UNSUITABLE_LANGUAGE, message);
+            return new JobPostingDtoResponse(UNSUITABLE_LANGUAGE, message, false);
         }
 
-        List<JobPosting> byPostedDateAsc = jobPostingRepository.findByCompanyAndLocationAndTitleAndBodyAndLanguageOrderByPostedDateAsc(
-                jobPostingDto.getCompany(),
-                jobPostingDto.getLocation(),
-                jobPostingDto.getTitle(),
-                jobPostingDto.getBody(),
-                language);
+        List<JobPosting> byPostedDateAsc = jobPostingRepository
+                .findByCompanyAndLocationAndTitleAndBodyAndLanguageOrderByPostedDateAsc(
+                        jobPostingDto.getCompany(),
+                        jobPostingDto.getLocation(),
+                        jobPostingDto.getTitle(),
+                        jobPostingDto.getBody(),
+                        language);
         if (!byPostedDateAsc.isEmpty()) {
             int visteCount = byPostedDateAsc.size();
 
@@ -120,13 +128,54 @@ public class JobService {
             JobPosting jobPosting = jobPostingMapper.toJobPosting(jobPostingDto, language);
             jobPostingRepository.save(jobPosting);
             oldJobCounter.increment();
-            return new JobPostingDtoResponse(ALREADY_SEEN, msg);
+            return new JobPostingDtoResponse(ALREADY_SEEN, msg, getApplicationStatus(jobPostingDto));
         }
 
         JobPosting jobPosting = jobPostingMapper.toJobPosting(jobPostingDto, language);
         jobPostingRepository.save(jobPosting);
         newJobCounter.increment();
-        return new JobPostingDtoResponse(NEW, "");
+        return new JobPostingDtoResponse(NEW, "", false);
+    }
+
+    public JobApplicationDtoResponse updateJobApplication(JobApplicationDto applicationDto) throws BadRequestException {
+        if (applicationDto == null || applicationDto.getOriginWebsite() == null
+                || applicationDto.getOriginWebsite().isBlank()
+                || applicationDto.getCompany() == null || applicationDto.getCompany().isBlank()
+                || applicationDto.getLocation() == null || applicationDto.getLocation().isBlank()
+                || applicationDto.getTitle() == null || applicationDto.getTitle().isBlank()
+                || applicationDto.getApplied() == null) {
+            throw new BadRequestException("Incomplete job application data");
+        }
+
+        var existingApplication = jobApplicationRepository.findByOriginWebsiteAndCompanyAndLocationAndTitle(
+                applicationDto.getOriginWebsite(),
+                applicationDto.getCompany(),
+                applicationDto.getLocation(),
+                applicationDto.getTitle());
+
+        if (!applicationDto.getApplied()) {
+            existingApplication.ifPresent(jobApplicationRepository::delete);
+            return new JobApplicationDtoResponse(false);
+        }
+
+        JobApplication jobApplication = existingApplication.orElseGet(JobApplication::new);
+        jobApplication.setOriginWebsite(applicationDto.getOriginWebsite());
+        jobApplication.setCompany(applicationDto.getCompany());
+        jobApplication.setLocation(applicationDto.getLocation());
+        jobApplication.setTitle(applicationDto.getTitle());
+        jobApplication.setApplied(true);
+        jobApplicationRepository.save(jobApplication);
+        return new JobApplicationDtoResponse(true);
+    }
+
+    private boolean getApplicationStatus(JobPostingDto jobPostingDto) {
+        return jobApplicationRepository.findByOriginWebsiteAndCompanyAndLocationAndTitle(
+                        jobPostingDto.getOriginWebsite(),
+                        jobPostingDto.getCompany(),
+                        jobPostingDto.getLocation(),
+                        jobPostingDto.getTitle())
+                .map(JobApplication::isApplied)
+                .orElse(false);
     }
 
     private void validateInput(JobPostingDto jobPostingDto) throws BadRequestException {

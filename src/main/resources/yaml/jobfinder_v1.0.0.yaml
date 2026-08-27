@@ -47,6 +47,31 @@ paths:
           $ref: '#/components/responses/chromeExtensionConfigResponseBody'
         '500':
           $ref: '#/components/responses/internalServerError'
+  /job/application:
+    parameters:
+      - $ref: '#/components/parameters/correlationIdRequestHeader'
+    patch:
+      tags:
+        - job
+      summary: Update application status for a job posting
+      operationId: updateJobApplication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/jobApplicationDto'
+      responses:
+        '200':
+          description: Application status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/jobApplicationDtoResponse'
+        '400':
+          $ref: '#/components/responses/badRequest'
+        '500':
+          $ref: '#/components/responses/internalServerError'
 
 components:
 
@@ -136,12 +161,47 @@ components:
       required:
         - esito
         - message
+        - applied
       properties:
         esito:
           $ref: '#/components/schemas/esito'
         message:
           type: string
           example: "Non sei interessato al C++"
+        applied:
+          type: boolean
+
+    jobApplicationDto:
+      type: object
+      required:
+        - originWebsite
+        - company
+        - location
+        - title
+        - applied
+      properties:
+        originWebsite:
+          type: string
+          minLength: 1
+        company:
+          type: string
+          minLength: 1
+        location:
+          type: string
+          minLength: 1
+        title:
+          type: string
+          minLength: 1
+        applied:
+          type: boolean
+
+    jobApplicationDtoResponse:
+      type: object
+      required:
+        - applied
+      properties:
+        applied:
+          type: boolean
 
     chromeExtensionConfigDtoResponse:
       type: object

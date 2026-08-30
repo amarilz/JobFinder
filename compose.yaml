@@ -1,0 +1,110 @@
+name: job-finder
+services:
+
+  postgres_job_finder:
+    image: postgres:18
+    container_name: postgres_job_finder
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: "${DB_NAME}"
+      POSTGRES_USER: "${DB_USER}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD}"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - job_finder
+
+  postgres-backup-sidecar:
+    image: amarilz/postgres-backup-sidecar:0.0.1
+    container_name: postgres-backup-sidecar
+    restart: unless-stopped
+    depends_on:
+      postgres_job_finder:
+        condition: service_healthy
+    stop_grace_period: 2m
+    environment:
+      PGHOST: postgres_job_finder
+      PGPORT: 5432
+      PGDATABASE: "${DB_NAME}"
+      PGUSER: "${DB_USER}"
+      PGPASSWORD: "${DB_PASSWORD}"
+      BACKUP_INTERVAL_SECONDS: "${BACKUP_INTERVAL_SECONDS:-86400}"
+      BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-14}"
+      BACKUP_COMPRESSION: "${BACKUP_COMPRESSION:-gzip:6}"
+      BACKUP_ON_START: "false"
+      BACKUP_ON_SHUTDOWN: "true"
+    volumes:
+      - "${BACKUP_BASE_PATH}:/backups"
+    networks:
+      - job_finder
+
+  be-job-finder:
+    container_name: be-job-finder
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8080:8080"
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: "127.0.0.1:24224"
+        tag: "java.app.{{.Name}}"
+        labels: "env,service,component,version"
+        fluentd-async: 'true'
+    environment:
+      DATABASE_URL: "jdbc:postgresql://postgres_job_finder:5432/${DB_NAME}"
+      DATABASE_USER: "${DB_USER}"
+      DATABASE_PASSWORD: "${DB_PASSWORD}"
+      JOB_POSTING_MAX_CANDIDATES: "${JOB_POSTING_MAX_CANDIDATES}"
+      JOB_POSTING_LANGUAGE_HANDLING: "${JOB_POSTING_LANGUAGE_HANDLING}"
+      JOB_POSTING_LANGUAGE_PREFERRED: ${JOB_POSTING_LANGUAGE_PREFERRED}"
+      JOB_POSTING_KEYWORDS_POSITIVE: "${JOB_POSTING_KEYWORDS_POSITIVE}"
+      JOB_POSTING_KEYWORDS_NEGATIVE: "${JOB_POSTING_KEYWORDS_NEGATIVE}"
+      CONFIG_SELECTOR_COMPANY: "${CONFIG_SELECTOR_COMPANY}"
+      CONFIG_SELECTOR_TITLE: "${CONFIG_SELECTOR_TITLE}"
+      CONFIG_SELECTOR_LOCATION: "${CONFIG_SELECTOR_LOCATION}"
+      CONFIG_SELECTOR_POSTEDDATE: "${CONFIG_SELECTOR_POSTEDDATE}"
+      CONFIG_SELECTOR_CANDIDATES: "${CONFIG_SELECTOR_CANDIDATES}"
+      CONFIG_SELECTOR_BODY: "${CONFIG_SELECTOR_BODY}"
+      CONFIG_SELECTOR_CONTAINERCARD: "${CONFIG_SELECTOR_CONTAINERCARD}"
+      CONFIG_SELECTOR_INFOJOB1: "${CONFIG_SELECTOR_INFOJOB1}"
+      CONFIG_SELECTOR_INFOJOB2: "${CONFIG_SELECTOR_INFOJOB2}"
+    volumes:
+      - type: bind
+        source: ./docker/app/application.properties
+        target: /app/application.properties
+        read_only: true
+      - type: bind
+        source: ./docker/app/logback.xml
+        target: /app/logback.xml
+        read_only: true
+      - app_logs:/app/logs
+    depends_on:
+      postgres_job_finder:
+        condition: service_healthy
+    networks:
+      - job_finder
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/be-jobfinder/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  app_logs:
+
+networks:
+  job_finder:
+    name: job_finder
+    driver: bridge
